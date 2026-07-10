@@ -1,0 +1,131 @@
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { get, post } from '../../lib/api.js';
+import { TopBar, SectionHeader, Chip, MaterialRow } from '../../ui/kit.jsx';
+import Icon from '../../ui/Icon.jsx';
+
+export default function StudentTaskScreen() {
+  const { classId, taskId } = useParams();
+  const nav = useNavigate();
+  const [cls, setCls] = useState(null);
+  const [stagedFile, setStagedFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => get(`/student/classes/${classId}`).then((d) => setCls(d.class));
+  useEffect(() => { load(); }, [classId]);
+
+  if (!cls) return null;
+  const task = cls.tasks.find((t) => t.id === taskId);
+  if (!task) return null;
+  const mySub = task.submissions[0]; // backend already scopes submissions... but student class endpoint returns all submissions with student names
+  const pastDeadline = task.status === 'late';
+
+  const onPickFile = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setStagedFile({ name: f.name, kind: /\.pdf$/i.test(f.name) ? 'pdf' : /\.(png|jpe?g)$/i.test(f.name) ? 'img' : 'file', size: (f.size / 1024 / 1024).toFixed(1) + ' MB', meta: 'Sin entregar aún' });
+  };
+
+  const submit = async () => {
+    setBusy(true);
+    try { await post(`/student/tasks/${taskId}/submit`, { file: { ...stagedFile, meta: 'Entregada ahora' }, late: pastDeadline }); setStagedFile(null); await load(); }
+    finally { setBusy(false); }
+  };
+  const undo = async () => {
+    setBusy(true);
+    try { await post(`/student/tasks/${taskId}/undo`); setStagedFile(null); await load(); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <TopBar title="Tarea" subtitle={cls.name} onBack={() => nav(-1)} />
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 24px' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          {task.status === 'dueSoon' && <Chip variant="warning">Vence pronto</Chip>}
+          {task.status === 'done' && <Chip variant="success">Completada</Chip>}
+          {task.status === 'pending' && <Chip variant="muted">Pendiente</Chip>}
+          {task.rubric && <Chip variant="info">Rúbrica · {task.rubric.reduce((s, c) => s + c.points, 0)} pts</Chip>}
+        </div>
+        <h1 style={{ fontFamily: 'var(--font-sans)', fontWeight: 800, fontSize: 24, letterSpacing: '-0.02em', margin: '0 0 6px' }}>{task.title}</h1>
+        <div style={{ fontSize: 13, color: 'var(--fg-3)', marginBottom: 12 }}>{task.due}</div>
+        <p style={{ fontSize: 14.5, lineHeight: 1.55, margin: '0 0 18px' }}>{task.desc}</p>
+
+        {task.files?.length > 0 && (
+          <>
+            <SectionHeader>Material adjunto</SectionHeader>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
+              {task.files.map((f) => <MaterialRow key={f.id} material={f} />)}
+            </div>
+          </>
+        )}
+
+        {task.rubric && (
+          <>
+            <SectionHeader>Rúbrica · cómo se califica</SectionHeader>
+            <div style={{ background: 'var(--white)', border: '1px solid var(--ink-200)', borderRadius: 12, overflow: 'hidden', marginBottom: 18 }}>
+              {task.rubric.map((c, i) => (
+                <div key={c.id} style={{ padding: '12px 14px', borderTop: i === 0 ? 'none' : '1px solid var(--ink-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name}</div>
+                    {c.desc && <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 2 }}>{c.desc}</div>}
+                  </div>
+                  <div style={{ padding: '4px 10px', borderRadius: 999, background: 'var(--indigo-50)', color: 'var(--indigo-700)', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12 }}>{c.points} pts</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <SectionHeader>Tu entrega</SectionHeader>
+        {!mySub || mySub.status === 'pending' ? (
+          <div style={{ background: 'var(--white)', border: '1.5px dashed var(--indigo-300)', borderRadius: 14, padding: 20, textAlign: 'center' }}>
+            {!stagedFile ? (
+              <>
+                <div style={{ width: 52, height: 52, margin: '0 auto 10px', borderRadius: 999, background: 'var(--indigo-50)', color: 'var(--indigo-600)', display: 'grid', placeItems: 'center' }}>
+                  <Icon name="upload" size={24} stroke={2} />
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Subir archivo</div>
+                <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 14 }}>PDF, Word, imagen o foto del cuaderno · un archivo</div>
+                <label style={{ display: 'inline-block', height: 44, lineHeight: '44px', padding: '0 22px', border: 0, borderRadius: 12, background: 'var(--indigo-500)', color: '#fff', fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                  Elegir archivo
+                  <input type="file" style={{ display: 'none' }} onChange={onPickFile} />
+                </label>
+              </>
+            ) : (
+              <>
+                <MaterialRow material={stagedFile} />
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
+                  <label style={{ height: 44, lineHeight: '44px', padding: '0 18px', border: '1px solid var(--ink-200)', borderRadius: 12, background: 'var(--white)', color: 'var(--fg-2)', fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                    Cambiar
+                    <input type="file" style={{ display: 'none' }} onChange={onPickFile} />
+                  </label>
+                  <button onClick={submit} disabled={busy} style={{ height: 44, padding: '0 22px', border: 0, borderRadius: 12, background: 'var(--indigo-500)', color: '#fff', fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                    {busy ? 'Enviando…' : 'Marcar como entregado'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div style={{ background: 'var(--white)', border: '1px solid var(--ink-200)', borderRadius: 14, padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Chip variant={mySub.grade != null ? 'success' : mySub.status === 'late' ? 'warning' : 'info'}>
+                {mySub.grade != null ? `Calificada · ${mySub.grade}/100` : mySub.status === 'late' ? 'Entregada tarde' : 'Entregada'}
+              </Chip>
+            </div>
+            {mySub.file && <MaterialRow material={mySub.file} />}
+            {mySub.comment && <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.5, color: 'var(--fg-2)', background: 'var(--ink-50)', borderRadius: 10, padding: 12 }}>{mySub.comment}</div>}
+            {mySub.grade == null && !pastDeadline && (
+              <button onClick={undo} disabled={busy} style={{ marginTop: 14, width: '100%', height: 44, border: '1px solid var(--ink-200)', borderRadius: 12, background: 'var(--white)', color: 'var(--fg-2)', fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                {busy ? 'Procesando…' : 'Deshacer envío'}
+              </button>
+            )}
+            {mySub.grade == null && pastDeadline && <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--fg-3)' }}>El plazo de entrega ya venció — no puedes deshacer el envío.</div>}
+            {mySub.grade != null && <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--fg-3)' }}>El profesor ya revisó tu entrega — no puedes modificarla.</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
