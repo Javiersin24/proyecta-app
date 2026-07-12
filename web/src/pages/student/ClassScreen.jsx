@@ -4,7 +4,7 @@ import { get } from '../../lib/api.js';
 import { useProjecting } from '../../lib/ProjectingContext.jsx';
 import Icon from '../../ui/Icon.jsx';
 import { Tabs, Avatar, TopicAccordion, TaskRow, EmptyState } from '../../ui/kit.jsx';
-import ProjectSheet from '../shared/ProjectSheet.jsx';
+import { useQuickProject } from '../shared/ProjectAction.jsx';
 import ProjectingStrip from '../shared/ProjectingStrip.jsx';
 
 const PALETTE = [['#4F46E5', '#5C6FD9'], ['#0EA5A0', '#22C9C0'], ['#8B5CF6', '#A78BFA'], ['#F2994A', '#FF7A52'], ['#3730A3', '#6366F1']];
@@ -15,9 +15,9 @@ export default function StudentClassScreen() {
   const { session } = useProjecting();
   const [cls, setCls] = useState(null);
   const [tab, setTab] = useState('feed');
-  const [projectMaterial, setProjectMaterial] = useState(null);
 
   useEffect(() => { get(`/student/classes/${classId}`).then((d) => setCls(d.class)); }, [classId]);
+  const { trigger: onProject, notice } = useQuickProject(cls);
   if (!cls) return null;
   const pal = PALETTE[cls.paletteIdx % PALETTE.length];
   const isProjecting = session?.fileName && cls.topics.some((t) => (cls.materials[t.id] || []).some((m) => m.name === session.fileName));
@@ -61,8 +61,8 @@ export default function StudentClassScreen() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {cls.topics.map((topic, i) => (
               <TopicAccordion key={topic.id} topic={topic} materials={cls.materials[topic.id]} canProject defaultOpen={i === 0}
-                onPickMaterial={(m) => nav('/estudiante/material', { state: { material: m, className: cls.name } })}
-                onProject={(m) => setProjectMaterial(m)} />
+                onPickMaterial={(m) => nav('/estudiante/material', { state: { material: m, className: cls.name, classId } })}
+                onProject={onProject} />
             ))}
             {cls.topics.length === 0 && <EmptyState icon="folder" title="Sin temas todavía" body="Tu profe aún no ha publicado temas en esta clase." />}
           </div>
@@ -77,7 +77,9 @@ export default function StudentClassScreen() {
       </div>
 
       {isProjecting && <ProjectingStrip />}
-      <ProjectSheet material={projectMaterial} open={!!projectMaterial} onClose={() => setProjectMaterial(null)} />
+      {notice && (
+        <div style={{ margin: '0 16px 12px', padding: '10px 14px', background: 'var(--ink-100)', color: 'var(--fg-2)', borderRadius: 12, fontSize: 12.5, fontWeight: 600 }}>{notice}</div>
+      )}
     </div>
   );
 }

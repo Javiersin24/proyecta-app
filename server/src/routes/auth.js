@@ -41,7 +41,30 @@ router.get('/me', authRequired, async (req, res) => {
   if (u.schoolId) {
     out.school = await prisma.school.findUnique({ where: { id: u.schoolId } });
   }
+  if (u.role === 'teacher' && u.currentProjectorId) {
+    out.currentProjector = await prisma.projector.findUnique({ where: { id: u.currentProjectorId } });
+  }
   res.json({ user: out });
+});
+
+// PUT /api/auth/salon-actual  { code }
+// El profesor marca "mi salón actual" escribiendo el código que ve en la
+// pantalla del proyector que tiene físicamente en frente (no elige de una
+// lista, para no equivocarse de salón). Queda igual para todas sus clases
+// hasta que lo cambie. { code: null } lo desvincula.
+router.put('/salon-actual', authRequired, async (req, res) => {
+  if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Solo el profesor puede vincular un salón' });
+  const { code } = req.body || {};
+  let projectorId = null;
+  if (code) {
+    const projector = await prisma.projector.findUnique({ where: { code: String(code).toUpperCase().trim() } });
+    if (!projector || projector.schoolId !== req.user.schoolId) return res.status(404).json({ error: 'Código de proyector no encontrado' });
+    if (!projector.enabled) return res.status(403).json({ error: 'Este proyector está suspendido' });
+    projectorId = projector.id;
+  }
+  await prisma.user.update({ where: { id: req.user.id }, data: { currentProjectorId: projectorId } });
+  const projector = projectorId ? await prisma.projector.findUnique({ where: { id: projectorId } }) : null;
+  res.json({ ok: true, projector });
 });
 
 // POST /api/auth/change-password  { currentPassword, newPassword }

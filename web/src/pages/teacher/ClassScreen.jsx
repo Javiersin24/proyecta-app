@@ -4,7 +4,7 @@ import { get } from '../../lib/api.js';
 import { useProjecting } from '../../lib/ProjectingContext.jsx';
 import Icon from '../../ui/Icon.jsx';
 import { Tabs, Avatar, TopicAccordion, TaskRow, EmptyState } from '../../ui/kit.jsx';
-import ProjectSheet from '../shared/ProjectSheet.jsx';
+import { useQuickProject } from '../shared/ProjectAction.jsx';
 import ProjectingStrip from '../shared/ProjectingStrip.jsx';
 import { ComposePostSheet, AddTopicSheet, AddMaterialSheet, AddTaskSheet, ConfirmDeleteClassSheet } from './sheets.jsx';
 
@@ -16,12 +16,13 @@ export default function TeacherClassScreen() {
   const { session } = useProjecting();
   const [cls, setCls] = useState(null);
   const [tab, setTab] = useState('feed');
-  const [sheet, setSheet] = useState(null); // 'post' | 'topic' | { material } | 'task'
+  const [sheet, setSheet] = useState(null); // 'post' | 'topic' | 'task'
   const [addMaterialTopicId, setAddMaterialTopicId] = useState(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const load = () => get(`/teacher/classes/${classId}`).then((d) => setCls(d.class));
   useEffect(() => { load(); }, [classId]);
+  const { trigger: onProject, sheet: linkSheet, notice } = useQuickProject(cls, (p) => setCls((c) => ({ ...c, projector: p, projectorId: p?.id || null })));
 
   if (!cls) return null;
   const pal = PALETTE[cls.paletteIdx % PALETTE.length];
@@ -79,8 +80,8 @@ export default function TeacherClassScreen() {
             </button>
             {cls.topics.map((topic, i) => (
               <TopicAccordion key={topic.id} topic={topic} materials={cls.materials[topic.id]} isTeacher defaultOpen={i === 0}
-                onPickMaterial={(m) => nav('/profesor/material', { state: { material: m, className: cls.name } })}
-                onProject={(m) => setSheet({ material: m })}
+                onPickMaterial={(m) => nav('/profesor/material', { state: { material: m, className: cls.name, classId } })}
+                onProject={onProject}
                 onAddMaterial={(tid) => setAddMaterialTopicId(tid)} />
             ))}
             {cls.topics.length === 0 && <EmptyState icon="folder" title="Aún no hay temas" body="Crea el primer tema para organizar tu material." />}
@@ -101,12 +102,15 @@ export default function TeacherClassScreen() {
       </div>
 
       {isProjecting && <ProjectingStrip />}
+      {notice && (
+        <div style={{ margin: '0 16px 12px', padding: '10px 14px', background: 'var(--ink-100)', color: 'var(--fg-2)', borderRadius: 12, fontSize: 12.5, fontWeight: 600 }}>{notice}</div>
+      )}
 
       <ComposePostSheet classId={classId} open={sheet === 'post'} onClose={() => setSheet(null)} onCreated={() => { setSheet(null); load(); }} />
       <AddTopicSheet classId={classId} open={sheet === 'topic'} onClose={() => setSheet(null)} onCreated={() => { setSheet(null); load(); }} />
       <AddTaskSheet classId={classId} open={sheet === 'task'} onClose={() => setSheet(null)} onCreated={() => { setSheet(null); load(); }} />
       <AddMaterialSheet topicId={addMaterialTopicId} open={!!addMaterialTopicId} onClose={() => setAddMaterialTopicId(null)} onCreated={() => { setAddMaterialTopicId(null); load(); }} />
-      <ProjectSheet material={sheet?.material} open={!!sheet?.material} onClose={() => setSheet(null)} />
+      {linkSheet}
       <ConfirmDeleteClassSheet cls={cls} open={deleteOpen} onClose={() => setDeleteOpen(false)} onDeleted={() => nav('/profesor', { replace: true })} />
     </div>
   );

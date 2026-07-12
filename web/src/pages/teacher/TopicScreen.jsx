@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { get } from '../../lib/api.js';
 import { TopBar, MaterialRow, EmptyState } from '../../ui/kit.jsx';
-import ProjectSheet from '../shared/ProjectSheet.jsx';
+import { useQuickProject } from '../shared/ProjectAction.jsx';
 import { AddMaterialSheet } from './sheets.jsx';
 import Icon from '../../ui/Icon.jsx';
 
@@ -10,11 +10,11 @@ export default function TeacherTopicScreen() {
   const { classId, topicId } = useParams();
   const nav = useNavigate();
   const [cls, setCls] = useState(null);
-  const [projectMaterial, setProjectMaterial] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
 
   const load = () => get(`/teacher/classes/${classId}`).then((d) => setCls(d.class));
   useEffect(() => { load(); }, [classId]);
+  const { trigger: onProject, sheet: linkSheet, notice } = useQuickProject(cls, (p) => setCls((c) => ({ ...c, projector: p, projectorId: p?.id || null })));
 
   if (!cls) return null;
   const topic = cls.topics.find((t) => t.id === topicId);
@@ -29,13 +29,16 @@ export default function TeacherTopicScreen() {
         </button>
         {materials.map((m) => (
           <MaterialRow key={m.id} material={m}
-            onClick={() => nav('/profesor/material', { state: { material: m, className: cls.name } })}
-            onProject={(mat) => setProjectMaterial(mat)} />
+            onClick={() => nav('/profesor/material', { state: { material: m, className: cls.name, classId } })}
+            onProject={onProject} />
         ))}
         {materials.length === 0 && <EmptyState icon="folder" title="Sin material" body="Agrega el primer archivo de este tema." />}
+        {notice && (
+          <div style={{ padding: '10px 14px', background: 'var(--ink-100)', color: 'var(--fg-2)', borderRadius: 12, fontSize: 12.5, fontWeight: 600 }}>{notice}</div>
+        )}
       </div>
       <AddMaterialSheet topicId={topicId} open={addOpen} onClose={() => setAddOpen(false)} onCreated={() => { setAddOpen(false); load(); }} />
-      <ProjectSheet material={projectMaterial} open={!!projectMaterial} onClose={() => setProjectMaterial(null)} />
+      {linkSheet}
     </div>
   );
 }

@@ -1,9 +1,9 @@
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { TopBar, EmptyState, MATERIAL_VISUAL, StatusDot } from '../../ui/kit.jsx';
-import { useProjecting } from '../../lib/ProjectingContext.jsx';
+import { get } from '../../lib/api.js';
+import { TopBar, EmptyState, MATERIAL_VISUAL } from '../../ui/kit.jsx';
+import ProjectAction from '../shared/ProjectAction.jsx';
 import Icon from '../../ui/Icon.jsx';
-import ProjectSheet from '../shared/ProjectSheet.jsx';
-import { useState } from 'react';
 
 // Vista de un solo material: previsualización + acción "Proyectar en el aula".
 // Este es el único punto donde se dispara la proyección al abrir un documento
@@ -11,10 +11,12 @@ import { useState } from 'react';
 export default function TeacherMaterialViewerScreen() {
   const nav = useNavigate();
   const loc = useLocation();
-  const { session } = useProjecting();
-  const [projectOpen, setProjectOpen] = useState(false);
   const material = loc.state?.material;
   const className = loc.state?.className;
+  const classId = loc.state?.classId;
+  const [cls, setCls] = useState(null);
+
+  useEffect(() => { if (classId) get(`/teacher/classes/${classId}`).then((d) => setCls(d.class)); }, [classId]);
 
   if (!material) {
     return (
@@ -26,7 +28,6 @@ export default function TeacherMaterialViewerScreen() {
   }
 
   const v = MATERIAL_VISUAL[material.kind] || MATERIAL_VISUAL.pdf;
-  const isProjectingThis = session?.fileName === material.name;
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -43,20 +44,8 @@ export default function TeacherMaterialViewerScreen() {
           {material.meta && <div style={{ fontSize: 12.5, color: 'var(--fg-3)' }}>{material.meta}</div>}
         </div>
 
-        {isProjectingThis && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--coral-50)', color: 'var(--coral-600)', borderRadius: 12, fontSize: 13, fontWeight: 700 }}>
-            <StatusDot status="live" /> Proyectando ahora en {session.projectorName}
-          </div>
-        )}
-
-        <button onClick={() => setProjectOpen(true)} style={{
-          height: 52, border: 0, borderRadius: 14, cursor: 'pointer', background: 'var(--indigo-600)', color: '#fff',
-          fontWeight: 700, fontSize: 15, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-        }}>
-          <Icon name="cast" size={19} /> Proyectar en el aula
-        </button>
+        {cls && <ProjectAction cls={cls} material={material} onLinked={(p) => setCls((c) => ({ ...c, projector: p, projectorId: p?.id || null }))} />}
       </div>
-      <ProjectSheet material={material} open={projectOpen} onClose={() => setProjectOpen(false)} />
     </div>
   );
 }

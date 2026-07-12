@@ -47,6 +47,7 @@ router.delete('/classes/:classId', ownClass, async (req, res) => {
   res.json({ ok: true });
 });
 
+
 // GET /api/teacher/horario  → horario semanal del profesor a través de todos sus grupos
 router.get('/horario', async (req, res) => {
   const slots = await prisma.groupSchedule.findMany({

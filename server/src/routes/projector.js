@@ -34,14 +34,28 @@ router.get('/', async (req, res) => {
   res.json({ projectors });
 });
 
-// POST /api/projector/:id/project  { fileName }
+// POST /api/projector/:id/project  { fileName, classId }
 // Vincula y proyecta: marca el proyector como "live" y abre una sesión.
+// Por seguridad, solo se puede proyectar al proyector que es el SALÓN ACTUAL
+// del profesor de esa clase (ver PUT /auth/salon-actual) — así ningún
+// profesor o estudiante puede mandar contenido al salón de otra clase.
 router.post('/:id/project', async (req, res) => {
-  const { fileName } = req.body || {};
+  const { fileName, classId } = req.body || {};
   if (!fileName) return res.status(400).json({ error: 'Falta el archivo a proyectar' });
+  if (!classId) return res.status(400).json({ error: 'Falta la clase desde la que proyectas' });
   const projector = await prisma.projector.findUnique({ where: { id: req.params.id } });
   if (!projector || projector.schoolId !== req.user.schoolId) return res.status(404).json({ error: 'Proyector no encontrado' });
   if (!projector.enabled) return res.status(403).json({ error: 'Este proyector está suspendido' });
+
+  const cls = await prisma.class.findUnique({ where: { id: classId }, include: { members: true, teacher: true } });
+  if (!cls || cls.teacher.currentProjectorId !== projector.id) return res.status(403).json({ error: 'Este no es el salón actual del profesor de esa clase' });
+  if (req.user.role === 'teacher') {
+    if (cls.teacherId !== req.user.id) return res.status(403).json({ error: 'Esta clase no es tuya' });
+  } else if (req.user.role === 'student') {
+    if (!cls.members.some((m) => m.studentId === req.user.id)) return res.status(403).json({ error: 'No perteneces a esta clase' });
+  } else {
+    return res.status(403).json({ error: 'No autorizado' });
+  }
 
   await prisma.projectionSession.updateMany({ where: { projectorId: projector.id, endedAt: null }, data: { endedAt: new Date() } });
   const session = await prisma.projectionSession.create({ data: { projectorId: projector.id, fileName, startedBy: req.user.name } });

@@ -44,6 +44,13 @@ export function serializeClass(c, { includeStudents = false } = {}) {
     id: c.id, name: c.name, section: c.section, code: c.code, paletteIdx: c.paletteIdx,
     teacher: c.teacher ? { id: c.teacher.id, name: c.teacher.name, email: c.teacher.email } : null,
     studentCount: c._count?.members ?? (c.members ? c.members.length : undefined),
+    // El "proyector de esta clase" es el salón actual del profesor (ver
+    // User.currentProjectorId) — el mismo para todas sus clases, y el mismo
+    // que ven sus estudiantes: siempre están juntos en clase.
+    projectorId: c.teacher?.currentProjectorId || null,
+    projector: c.teacher?.currentProjector
+      ? { id: c.teacher.currentProjector.id, name: c.teacher.currentProjector.name, aula: c.teacher.currentProjector.aula, status: c.teacher.currentProjector.status, enabled: c.teacher.currentProjector.enabled, linked: c.teacher.currentProjector.linked }
+      : null,
     pending: (c.tasks || []).filter((t) => t.status !== 'done').length,
     topics,
     materials,
@@ -58,7 +65,7 @@ export function serializeClass(c, { includeStudents = false } = {}) {
 
 // Include estándar para traer una clase completa.
 export const CLASS_INCLUDE = {
-  teacher: true,
+  teacher: { include: { currentProjector: true } },
   topics: { include: { materials: true }, orderBy: { order: 'asc' } },
   posts: { orderBy: { createdAt: 'desc' } },
   tasks: { include: { submissions: { include: { student: true } } } },

@@ -71,6 +71,11 @@ model User {
   // Específico de profesor
   capacidad     Int?
   teachSubjects TeacherSubject[]
+  // "Mi salón actual": el profesor lo marca al entrar a un salón (escribiendo
+  // el código que ve en la pantalla del proyector). Desde ahí, todas sus
+  // clases proyectan ahí en un solo toque — hasta que vuelva a cambiarlo.
+  currentProjector   Projector? @relation(fields: [currentProjectorId], references: [id])
+  currentProjectorId String?
 
   classesTaught     Class[]                   @relation("ClassTeacher")
   classMemberships  ClassMember[]
@@ -450,7 +455,8 @@ model Projector {
   status   String  @default("offline") // live | online | offline
   activity String?
 
-  sessions ProjectionSession[]
+  sessions      ProjectionSession[]
+  linkedTeachers User[] // profesores que marcaron este proyector como "mi salón actual"
 }
 
 model ProjectionSession {

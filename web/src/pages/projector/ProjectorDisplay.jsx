@@ -57,11 +57,11 @@ export default function ProjectorDisplay() {
           </div>
           <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 800, fontSize: 40 }}>{state.projector.name}</div>
           <div style={{ fontSize: 15, color: 'var(--fg-2)', fontWeight: 500 }}>Esperando una presentación…</div>
-          <div style={{ fontSize: 13.5, color: 'var(--ink-400)', marginTop: 14 }}>
-            Abre Proyecta en tu celular, tablet o laptop y toca "Proyectar"
-          </div>
-          <div style={{ position: 'absolute', bottom: 22, right: 24, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--fg-3)', border: '1px dashed var(--ink-300)', borderRadius: 10, padding: '7px 14px' }}>
-            código {code}
+          <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 13, color: 'var(--ink-400)', fontWeight: 600 }}>Profesor: escribe este código en Proyecta → "Marcar mi salón actual"</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 52, fontWeight: 800, letterSpacing: '0.16em', color: 'var(--indigo-600)', background: 'var(--indigo-50)', borderRadius: 16, padding: '10px 34px' }}>
+              {code}
+            </div>
           </div>
         </div>
       )}
