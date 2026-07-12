@@ -41,6 +41,25 @@ router.post('/classes', async (req, res) => {
   res.status(201).json({ class: serializeClass(c, { includeStudents: true }) });
 });
 
+// DELETE /api/teacher/classes/:classId
+router.delete('/classes/:classId', ownClass, async (req, res) => {
+  await prisma.class.delete({ where: { id: req.params.classId } });
+  res.json({ ok: true });
+});
+
+// GET /api/teacher/horario  → horario semanal del profesor a través de todos sus grupos
+router.get('/horario', async (req, res) => {
+  const slots = await prisma.groupSchedule.findMany({
+    where: { teacherId: req.user.id },
+    include: { group: { include: { room: true } } },
+  });
+  const horario = slots.map((s) => ({
+    materia: s.materia, dia: s.dia, hora: s.hora,
+    grupo: s.group.nombre, grupoId: s.group.id, aula: s.group.room?.name || null,
+  }));
+  res.json({ horario });
+});
+
 // POST /api/teacher/classes/:classId/topics  { name, accent }
 router.post('/classes/:classId/topics', ownClass, async (req, res) => {
   const { name, accent } = req.body || {};
@@ -75,12 +94,12 @@ router.post('/classes/:classId/posts', ownClass, async (req, res) => {
 
 // POST /api/teacher/classes/:classId/tasks  { title, desc, due, points, rubric, files }
 router.post('/classes/:classId/tasks', ownClass, async (req, res) => {
-  const { title, desc, due, points, rubric, files } = req.body || {};
+  const { title, desc, due, dueDate, points, rubric, files } = req.body || {};
   if (!title) return res.status(400).json({ error: 'Título de la tarea obligatorio' });
   const total = await prisma.classMember.count({ where: { classId: req.params.classId } });
   const t = await prisma.task.create({
     data: {
-      classId: req.params.classId, title, desc: desc || null, due: due || null,
+      classId: req.params.classId, title, desc: desc || null, due: due || null, dueDate: dueDate || null,
       points: Number(points) || 0, total, status: 'pending',
       rubric: toJSON(rubric), files: toJSON(files || []) || '[]',
     },
@@ -121,6 +140,60 @@ router.put('/groups/:groupId/grade', async (req, res) => {
     create: { groupId: group.id, materia, studentName, valor: v },
   });
   res.json({ entry });
+});
+
+// ── Asistencia diaria por clase ─────────────────────────────────────────────
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+// GET /api/teacher/classes/:classId/asistencia?date=YYYY-MM-DD  (default: hoy)
+router.get('/classes/:classId/asistencia', ownClass, async (req, res) => {
+  const date = req.query.date || todayISO();
+  const entries = await prisma.classAttendanceEntry.findMany({ where: { classId: req.params.classId, date } });
+  const asistencia = Object.fromEntries(entries.map((e) => [e.studentName, e.estado]));
+  res.json({ date, asistencia });
+});
+
+// PUT /api/teacher/classes/:classId/asistencia  { studentName, estado, date? }
+router.put('/classes/:classId/asistencia', ownClass, async (req, res) => {
+  const { studentName, estado } = req.body || {};
+  const date = req.body?.date || todayISO();
+  if (!studentName || !estado) return res.status(400).json({ error: 'Estudiante y estado obligatorios' });
+  const entry = await prisma.classAttendanceEntry.upsert({
+    where: { classId_studentName_date: { classId: req.params.classId, studentName, date } },
+    update: { estado },
+    create: { classId: req.params.classId, studentName, date, estado },
+  });
+  res.json({ entry });
+});
+
+// GET /api/teacher/classes/:classId/asistencia/historial  → últimos días con registros
+router.get('/classes/:classId/asistencia/historial', ownClass, async (req, res) => {
+  const entries = await prisma.classAttendanceEntry.findMany({
+    where: { classId: req.params.classId }, orderBy: { date: 'desc' },
+  });
+  const byDate = {};
+  for (const e of entries) {
+    (byDate[e.date] ||= {})[e.studentName] = e.estado;
+  }
+  const dias = Object.keys(byDate).sort((a, b) => b.localeCompare(a)).slice(0, 10)
+    .map((date) => ({ date, registros: byDate[date] }));
+  res.json({ historial: dias });
+});
+
+// ── Gradebook flexible por clase (categorías × columnas) ────────────────────
+
+// GET /api/teacher/classes/:classId/gradebook
+router.get('/classes/:classId/gradebook', ownClass, async (req, res) => {
+  res.json({ gradebook: parseJSON(req.class.gradebook, null) });
+});
+
+// PUT /api/teacher/classes/:classId/gradebook  { cats, rows, grades }
+router.put('/classes/:classId/gradebook', ownClass, async (req, res) => {
+  const gb = req.body || {};
+  if (!gb.cats || !gb.rows || !gb.grades) return res.status(400).json({ error: 'Formato de libro de notas inválido' });
+  await prisma.class.update({ where: { id: req.params.classId }, data: { gradebook: toJSON(gb) } });
+  res.json({ ok: true });
 });
 
 function randomCode() {

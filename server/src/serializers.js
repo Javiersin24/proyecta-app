@@ -18,7 +18,7 @@ export function serializeTask(t) {
   }));
   const submitted = t._count?.submissions ?? submissions.filter((s) => s.status === 'done' || s.status === 'late').length;
   return {
-    id: t.id, title: t.title, desc: t.desc, due: t.due, status: t.status,
+    id: t.id, title: t.title, desc: t.desc, due: t.due, dueDate: t.dueDate, status: t.status,
     points: t.points, total: t.total,
     rubric: parseJSON(t.rubric),
     files: parseJSON(t.files, []),

@@ -8,6 +8,7 @@
 //   /api/matricula   → portal de matrícula (aspirantes)
 //   /api/projector   → emparejar y proyectar
 //   /api/chat        → chat 1:1 y grupal (profesor + estudiante)
+//   /api/events, /api/reminders → Organizador (eventos del colegio + recordatorios personales)
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -20,6 +21,7 @@ import superadminRoutes from './routes/superadmin.js';
 import matriculaRoutes from './routes/matricula.js';
 import projectorRoutes from './routes/projector.js';
 import chatRoutes from './routes/chat.js';
+import organizerRoutes from './routes/organizer.js';
 
 const app = express();
 app.use(cors());
@@ -35,6 +37,7 @@ app.use('/api/superadmin', superadminRoutes);
 app.use('/api/matricula', matriculaRoutes);
 app.use('/api/projector', projectorRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api', organizerRoutes);
 
 // 404 + manejador de errores
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));

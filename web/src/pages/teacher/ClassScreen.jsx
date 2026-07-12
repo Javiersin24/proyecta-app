@@ -6,7 +6,7 @@ import Icon from '../../ui/Icon.jsx';
 import { Tabs, Avatar, TopicAccordion, TaskRow, EmptyState } from '../../ui/kit.jsx';
 import ProjectSheet from '../shared/ProjectSheet.jsx';
 import ProjectingStrip from '../shared/ProjectingStrip.jsx';
-import { ComposePostSheet, AddTopicSheet, AddMaterialSheet, AddTaskSheet } from './sheets.jsx';
+import { ComposePostSheet, AddTopicSheet, AddMaterialSheet, AddTaskSheet, ConfirmDeleteClassSheet } from './sheets.jsx';
 
 const PALETTE = [['#4F46E5', '#5C6FD9'], ['#0EA5A0', '#22C9C0'], ['#8B5CF6', '#A78BFA'], ['#F2994A', '#FF7A52'], ['#3730A3', '#6366F1']];
 
@@ -18,6 +18,7 @@ export default function TeacherClassScreen() {
   const [tab, setTab] = useState('feed');
   const [sheet, setSheet] = useState(null); // 'post' | 'topic' | { material } | 'task'
   const [addMaterialTopicId, setAddMaterialTopicId] = useState(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const load = () => get(`/teacher/classes/${classId}`).then((d) => setCls(d.class));
   useEffect(() => { load(); }, [classId]);
@@ -31,6 +32,9 @@ export default function TeacherClassScreen() {
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <button onClick={() => nav(-1)} style={{ position: 'absolute', top: 12, left: 12, zIndex: 2, width: 36, height: 36, border: 0, borderRadius: 999, background: 'rgba(255,255,255,0.18)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
           <Icon name="back" size={20} stroke={2.2} />
+        </button>
+        <button onClick={() => setDeleteOpen(true)} aria-label="Eliminar clase" style={{ position: 'absolute', top: 12, right: 12, zIndex: 2, width: 36, height: 36, border: 0, borderRadius: 999, background: 'rgba(255,255,255,0.18)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+          <Icon name="trash" size={17} stroke={2.2} />
         </button>
         <div style={{ background: `linear-gradient(135deg, ${pal[0]} 0%, ${pal[1]} 100%)`, padding: '20px 18px 22px', color: '#fff' }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.78, marginBottom: 4 }}>{cls.section}</div>
@@ -75,7 +79,7 @@ export default function TeacherClassScreen() {
             </button>
             {cls.topics.map((topic, i) => (
               <TopicAccordion key={topic.id} topic={topic} materials={cls.materials[topic.id]} isTeacher defaultOpen={i === 0}
-                onPickMaterial={(m) => nav(`/profesor/clases/${classId}/temas/${topic.id}`)}
+                onPickMaterial={(m) => nav('/profesor/material', { state: { material: m, className: cls.name } })}
                 onProject={(m) => setSheet({ material: m })}
                 onAddMaterial={(tid) => setAddMaterialTopicId(tid)} />
             ))}
@@ -103,6 +107,7 @@ export default function TeacherClassScreen() {
       <AddTaskSheet classId={classId} open={sheet === 'task'} onClose={() => setSheet(null)} onCreated={() => { setSheet(null); load(); }} />
       <AddMaterialSheet topicId={addMaterialTopicId} open={!!addMaterialTopicId} onClose={() => setAddMaterialTopicId(null)} onCreated={() => { setAddMaterialTopicId(null); load(); }} />
       <ProjectSheet material={sheet?.material} open={!!sheet?.material} onClose={() => setSheet(null)} />
+      <ConfirmDeleteClassSheet cls={cls} open={deleteOpen} onClose={() => setDeleteOpen(false)} onDeleted={() => nav('/profesor', { replace: true })} />
     </div>
   );
 }

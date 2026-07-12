@@ -49,25 +49,65 @@ export const IconButton = ({ name, onClick, badge, color, ariaLabel }) => (
   </button>
 );
 
-export const TabBar = ({ items, active, onChange }) => (
-  <div style={{
-    height: 'var(--tabbar-h)', flexShrink: 0, display: 'flex', borderTop: '1px solid var(--border-subtle)',
-    background: 'var(--bg-surface)', paddingBottom: 'var(--safe-bottom)',
-  }}>
-    {items.map((it) => {
-      const on = active === it.id;
-      return (
-        <button key={it.id} onClick={() => onChange(it.id)} style={{
-          flex: 1, border: 0, background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 3, color: on ? 'var(--indigo-600)' : 'var(--fg-3)',
-        }}>
-          <Icon name={it.icon} size={21} stroke={on ? 2.1 : 1.75} />
-          <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 600 }}>{it.label}</span>
-        </button>
-      );
-    })}
-  </div>
-);
+// Barra inferior de móvil: Inicio, Tareas, Chat fijos + "Más" con el resto en
+// una hoja (para caber los 9 ítems de nav sin amontonarlos).
+export const TabBar = ({ items, active, onChange }) => {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const coreIds = ['home', 'tasks', 'chat'];
+  const core = coreIds.map((id) => items.find((it) => it.id === id)).filter(Boolean);
+  const moreItems = items.filter((it) => !coreIds.includes(it.id));
+  const activeInMore = moreItems.some((it) => it.id === active);
+  const bottomItems = [...core, { id: '__more', label: 'Más', icon: 'more', isMore: true }];
+
+  return (
+    <>
+      {moreOpen && (
+        <div onClick={() => setMoreOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(15,20,32,0.5)', display: 'flex', alignItems: 'flex-end' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, margin: '0 auto', background: 'var(--paper-50)', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: '14px 16px calc(20px + var(--safe-bottom))' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}><div style={{ width: 42, height: 4, borderRadius: 999, background: 'var(--ink-300)' }} /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+              {moreItems.map((it) => {
+                const on = it.id === active;
+                return (
+                  <button key={it.id} onClick={() => { onChange(it.id); setMoreOpen(false); }} style={{
+                    border: on ? '1.5px solid var(--indigo-500)' : '1px solid var(--border-subtle)',
+                    background: on ? 'var(--indigo-50)' : 'var(--white)', borderRadius: 16, padding: '16px 8px', cursor: 'pointer',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: on ? 'var(--indigo-700)' : 'var(--fg-2)',
+                  }}>
+                    <Icon name={it.icon} size={22} stroke={2} />
+                    <span style={{ fontSize: 11.5, fontWeight: 700 }}>{it.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{
+        height: 'var(--tabbar-h)', flexShrink: 0, display: 'flex', borderTop: '1px solid var(--border-subtle)',
+        background: 'var(--bg-surface)', paddingBottom: 'var(--safe-bottom)',
+      }}>
+        {bottomItems.map((it) => {
+          const on = it.isMore ? activeInMore : it.id === active;
+          return (
+            <button key={it.id} onClick={() => (it.isMore ? setMoreOpen(true) : onChange(it.id))} style={{
+              flex: 1, border: 0, background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 3, position: 'relative', color: on ? 'var(--indigo-600)' : 'var(--fg-3)',
+            }}>
+              <div style={{ position: 'relative' }}>
+                <Icon name={it.icon} size={21} stroke={on ? 2.1 : 1.75} />
+                {it.badge > 0 && (
+                  <span style={{ position: 'absolute', top: -4, right: -8, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999, background: 'var(--coral-500)', color: '#fff', fontSize: 10, fontWeight: 800, lineHeight: '16px', textAlign: 'center' }}>{it.badge}</span>
+                )}
+              </div>
+              <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 600 }}>{it.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+};
 
 export const Avatar = ({ name = '', size = 32 }) => {
   const initials = name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();

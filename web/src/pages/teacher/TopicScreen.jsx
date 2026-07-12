@@ -27,7 +27,11 @@ export default function TeacherTopicScreen() {
         <button onClick={() => setAddOpen(true)} style={{ padding: '12px 16px', border: '1.5px dashed var(--indigo-400)', background: 'var(--indigo-50)', color: 'var(--indigo-700)', borderRadius: 13, cursor: 'pointer', fontWeight: 700, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <Icon name="plus" size={18} stroke={2.2} /> Agregar material
         </button>
-        {materials.map((m) => <MaterialRow key={m.id} material={m} onProject={(mat) => setProjectMaterial(mat)} />)}
+        {materials.map((m) => (
+          <MaterialRow key={m.id} material={m}
+            onClick={() => nav('/profesor/material', { state: { material: m, className: cls.name } })}
+            onProject={(mat) => setProjectMaterial(mat)} />
+        ))}
         {materials.length === 0 && <EmptyState icon="folder" title="Sin material" body="Agrega el primer archivo de este tema." />}
       </div>
       <AddMaterialSheet topicId={topicId} open={addOpen} onClose={() => setAddOpen(false)} onCreated={() => { setAddOpen(false); load(); }} />

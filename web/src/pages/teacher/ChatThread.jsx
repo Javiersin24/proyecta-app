@@ -1,2 +1,2 @@
-import ChatThreadScreen from '../shared/ChatThreadScreen.jsx';
-export default function TeacherChatThread() { return <ChatThreadScreen />; }
+import ChatSplitScreen from '../shared/ChatSplitScreen.jsx';
+export default function TeacherChatThread() { return <ChatSplitScreen basePath="/profesor/chat" />; }

@@ -224,17 +224,22 @@ async function main() {
 
   // ── Proyectores (agrega los del San Martín + otros colegios) ────────────
   const projectorsSeed = [
-    { name: 'Aula 204', school: 'Colegio San Martín', status: 'live', activity: 'Proyectando: Funciones cuadráticas.pptx' },
-    { name: 'Lab de Ciencias', school: 'Colegio San Martín', status: 'online', activity: 'En línea · sin actividad' },
-    { name: 'Auditorio', school: 'Colegio San Martín', status: 'offline', activity: 'Sin conexión desde ayer' },
-    { name: 'Aula 101', school: 'Liceo del Norte', status: 'online', activity: 'En línea · sin actividad' },
-    { name: 'Aula 305', school: 'Liceo del Norte', status: 'live', activity: 'Proyectando: Guía de laboratorio.pdf' },
-    { name: 'Auditorio Central', school: 'Universidad Central del Valle', status: 'online', activity: 'En línea · sin actividad' },
-    { name: 'Sala 12', school: 'Instituto Técnico Sur', status: 'offline', activity: 'Sin conexión desde el lunes' },
-    { name: 'Aula 3', school: 'Gimnasio Los Cerros', status: 'online', activity: 'En línea · sin actividad' },
+    { name: 'Aula 204', aula: 'Aula 204', code: '7B3K', school: 'Colegio San Martín', status: 'live', activity: 'Proyectando: Funciones cuadráticas.pptx' },
+    { name: 'Lab de Ciencias', aula: 'Lab de Ciencias', code: 'M8V2', school: 'Colegio San Martín', status: 'online', activity: 'En línea · sin actividad' },
+    { name: 'Auditorio', aula: 'Auditorio', code: 'P5R1', school: 'Colegio San Martín', status: 'offline', activity: 'Sin conexión desde ayer' },
+    { name: 'Aula 101', aula: 'Aula 101', code: '4QZK', school: 'Liceo del Norte', status: 'online', activity: 'En línea · sin actividad' },
+    { name: 'Aula 305', aula: 'Aula 305', code: 'L3P9', school: 'Liceo del Norte', status: 'live', activity: 'Proyectando: Guía de laboratorio.pdf' },
+    { name: 'Auditorio Central', aula: 'Auditorio Central', code: 'UCV1', school: 'Universidad Central del Valle', status: 'online', activity: 'En línea · sin actividad' },
+    { name: 'Sala 12', aula: 'Sala 12', code: 'ITS7', school: 'Instituto Técnico Sur', status: 'offline', activity: 'Sin conexión desde el lunes' },
+    { name: 'Aula 3', aula: 'Aula 3', code: 'GLC4', school: 'Gimnasio Los Cerros', status: 'online', activity: 'En línea · sin actividad' },
   ];
   for (const p of projectorsSeed) {
-    await prisma.projector.create({ data: { schoolId: schools[p.school].id, name: p.name, status: p.status, activity: p.activity } });
+    await prisma.projector.create({
+      data: {
+        schoolId: schools[p.school].id, name: p.name, aula: p.aula, code: p.code,
+        status: p.status, activity: p.activity, linked: true, enabled: true,
+      },
+    });
   }
 
   // ── Clases / aula virtual (PROYECTA_DATA.classes) ───────────────────────
@@ -242,6 +247,28 @@ async function main() {
 
   // ── Chats demo (Laura ↔ estudiantes) ────────────────────────────────────
   await seedChats({ prisma, laura: profes['Laura Ramírez'], students });
+
+  // ── Eventos del colegio (Organizador) ───────────────────────────────────
+  const eventosSeed = [
+    { title: 'Entrega de proyectos de Física', date: '2026-07-15', time: '10:00', desc: 'Exposición final de los proyectos en el laboratorio. Trae tu maqueta y la presentación.', tipo: 'Académico' },
+    { title: 'Reunión de padres 10°B', date: '2026-07-18', time: '17:00', desc: 'Entrega de boletines del primer semestre y espacio de preguntas.', tipo: 'Reunión' },
+    { title: 'Salida pedagógica al museo', date: '2026-07-24', time: '08:00', desc: 'Punto de encuentro en la portería. Recuerda el permiso firmado y el almuerzo.', tipo: 'Salida' },
+  ];
+  for (const e of eventosSeed) {
+    await prisma.event.create({ data: { schoolId: sanMartin.id, createdBy: profes['Laura Ramírez'].name, ...e } });
+  }
+
+  // ── Recordatorios personales de ejemplo (Ana Martínez) ──────────────────
+  const remindersSeed = [
+    { text: 'Repasar capítulo 4 antes del quiz', date: '2026-07-12', done: false },
+    { text: 'Comprar materiales para la maqueta', date: '2026-07-14', done: false },
+    { text: 'Enviar consentimiento de la salida', date: null, done: true },
+  ];
+  if (students['Ana Martínez']) {
+    for (const r of remindersSeed) {
+      await prisma.reminder.create({ data: { userId: students['Ana Martínez'].id, ...r } });
+    }
+  }
 
   const totalUsers = await prisma.user.count();
   console.log(`✅ Listo. ${Object.keys(schools).length} colegios, ${totalUsers} cuentas.`);

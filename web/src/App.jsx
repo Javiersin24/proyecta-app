@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/AuthContext.jsx';
 import { ProjectingProvider } from './lib/ProjectingContext.jsx';
+import { LanguageProvider } from './lib/LanguageContext.jsx';
 import RequireRole, { HOME_BY_ROLE } from './lib/RequireRole.jsx';
 import AppLayout from './ui/AppLayout.jsx';
 
@@ -15,7 +16,10 @@ import TeacherGrade from './pages/teacher/GradeScreen.jsx';
 import TeacherTasksOverview from './pages/teacher/TasksOverview.jsx';
 import TeacherChatList from './pages/teacher/ChatList.jsx';
 import TeacherChatThread from './pages/teacher/ChatThread.jsx';
-import TeacherSettings from './pages/teacher/Settings.jsx';
+import TeacherHorario from './pages/teacher/HorarioScreen.jsx';
+import TeacherAsistencia from './pages/teacher/AsistenciaScreen.jsx';
+import TeacherCalificaciones from './pages/teacher/CalificacionesScreen.jsx';
+import TeacherMaterialViewer from './pages/teacher/MaterialViewerScreen.jsx';
 
 import StudentHome from './pages/student/Home.jsx';
 import StudentClass from './pages/student/ClassScreen.jsx';
@@ -25,7 +29,12 @@ import StudentTasksOverview from './pages/student/TasksOverview.jsx';
 import StudentHorario from './pages/student/HorarioScreen.jsx';
 import StudentChatList from './pages/student/ChatList.jsx';
 import StudentChatThread from './pages/student/ChatThread.jsx';
-import StudentSettings from './pages/student/Settings.jsx';
+import StudentCalificaciones from './pages/student/CalificacionesScreen.jsx';
+import StudentMaterialViewer from './pages/student/MaterialViewerScreen.jsx';
+
+import EventsScreen from './pages/shared/EventsScreen.jsx';
+import OrganizerScreen from './pages/shared/OrganizerScreen.jsx';
+import SettingsScreen from './pages/shared/SettingsScreen.jsx';
 
 import AdminResumen from './pages/admin/Resumen.jsx';
 import AdminCuentas from './pages/admin/Cuentas.jsx';
@@ -45,6 +54,11 @@ import ProjectorDisplay from './pages/projector/ProjectorDisplay.jsx';
 const TEACHER_NAV = [
   { id: 'home', label: 'Inicio', icon: 'home', to: '/profesor' },
   { id: 'tasks', label: 'Tareas', icon: 'clipboard', to: '/profesor/tareas' },
+  { id: 'horario', label: 'Horario', icon: 'calendar', to: '/profesor/horario' },
+  { id: 'asistencia', label: 'Asistencia', icon: 'check', to: '/profesor/asistencia' },
+  { id: 'calificaciones', label: 'Calificaciones', icon: 'award', to: '/profesor/calificaciones' },
+  { id: 'eventos', label: 'Eventos', icon: 'megaphone', to: '/profesor/eventos' },
+  { id: 'agenda', label: 'Organizador', icon: 'clipboard', to: '/profesor/agenda' },
   { id: 'chat', label: 'Chat', icon: 'chat', to: '/profesor/chat' },
   { id: 'settings', label: 'Ajustes', icon: 'settings', to: '/profesor/ajustes' },
 ];
@@ -52,6 +66,9 @@ const STUDENT_NAV = [
   { id: 'home', label: 'Inicio', icon: 'home', to: '/estudiante' },
   { id: 'tasks', label: 'Tareas', icon: 'clipboard', to: '/estudiante/tareas' },
   { id: 'horario', label: 'Horario', icon: 'calendar', to: '/estudiante/horario' },
+  { id: 'calificaciones', label: 'Calificaciones', icon: 'award', to: '/estudiante/calificaciones' },
+  { id: 'eventos', label: 'Eventos', icon: 'megaphone', to: '/estudiante/eventos' },
+  { id: 'agenda', label: 'Organizador', icon: 'clipboard', to: '/estudiante/agenda' },
   { id: 'chat', label: 'Chat', icon: 'chat', to: '/estudiante/chat' },
   { id: 'settings', label: 'Ajustes', icon: 'settings', to: '/estudiante/ajustes' },
 ];
@@ -81,6 +98,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+      <LanguageProvider>
       <ProjectingProvider>
         <Routes>
           <Route path="/" element={<RootRedirect />} />
@@ -92,25 +110,35 @@ export default function App() {
           <Route path="/profesor" element={<RequireRole roles={['teacher']}><AppLayout navItems={TEACHER_NAV} roleLabel="Profesor" /></RequireRole>}>
             <Route index element={<TeacherHome />} />
             <Route path="tareas" element={<TeacherTasksOverview />} />
+            <Route path="horario" element={<TeacherHorario />} />
+            <Route path="asistencia" element={<TeacherAsistencia />} />
+            <Route path="calificaciones" element={<TeacherCalificaciones />} />
+            <Route path="eventos" element={<EventsScreen isTeacher />} />
+            <Route path="agenda" element={<OrganizerScreen basePath="/profesor" isTeacher />} />
             <Route path="chat" element={<TeacherChatList />} />
             <Route path="chat/:chatId" element={<TeacherChatThread />} />
-            <Route path="ajustes" element={<TeacherSettings />} />
+            <Route path="ajustes" element={<SettingsScreen roleLabel="Profesor" />} />
             <Route path="clases/:classId" element={<TeacherClass />} />
             <Route path="clases/:classId/temas/:topicId" element={<TeacherTopic />} />
             <Route path="clases/:classId/tareas/:taskId" element={<TeacherTask />} />
             <Route path="clases/:classId/tareas/:taskId/calificar/:subId" element={<TeacherGrade />} />
+            <Route path="material" element={<TeacherMaterialViewer />} />
           </Route>
 
           <Route path="/estudiante" element={<RequireRole roles={['student']}><AppLayout navItems={STUDENT_NAV} roleLabel="Estudiante" /></RequireRole>}>
             <Route index element={<StudentHome />} />
             <Route path="tareas" element={<StudentTasksOverview />} />
             <Route path="horario" element={<StudentHorario />} />
+            <Route path="calificaciones" element={<StudentCalificaciones />} />
+            <Route path="eventos" element={<EventsScreen isTeacher={false} />} />
+            <Route path="agenda" element={<OrganizerScreen basePath="/estudiante" isTeacher={false} />} />
             <Route path="chat" element={<StudentChatList />} />
             <Route path="chat/:chatId" element={<StudentChatThread />} />
-            <Route path="ajustes" element={<StudentSettings />} />
+            <Route path="ajustes" element={<SettingsScreen roleLabel="Estudiante" />} />
             <Route path="clases/:classId" element={<StudentClass />} />
             <Route path="clases/:classId/temas/:topicId" element={<StudentTopic />} />
             <Route path="clases/:classId/tareas/:taskId" element={<StudentTask />} />
+            <Route path="material" element={<StudentMaterialViewer />} />
           </Route>
 
           <Route path="/admin" element={<RequireRole roles={['admin']}><AppLayout navItems={ADMIN_NAV} roleLabel="Admin de colegio" /></RequireRole>}>
@@ -133,6 +161,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ProjectingProvider>
+      </LanguageProvider>
       </AuthProvider>
     </BrowserRouter>
   );

@@ -43,6 +43,33 @@ router.get('/accounts', async (req, res) => {
   res.json({ accounts: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, status: u.status, online: u.online })) });
 });
 
+// POST /api/admin/accounts  { name, role }  → crea cuenta y genera usuario+contraseña temporal
+router.post('/accounts', async (req, res) => {
+  const schoolId = mySchool(req);
+  const { name, role } = req.body || {};
+  if (!name || !['admin', 'teacher', 'student'].includes(role)) {
+    return res.status(400).json({ error: 'Nombre y tipo de cuenta (admin/teacher/student) son obligatorios' });
+  }
+  const school = await prisma.school.findUnique({ where: { id: schoolId } });
+  const usuario = await uniqueUsername(name, school.name);
+  const pass = genPassword();
+  const bcrypt = (await import('bcryptjs')).default;
+  const passwordHash = await bcrypt.hash(pass, 10);
+  const user = await prisma.user.create({ data: { schoolId, name, email: usuario, role, passwordHash } });
+  res.status(201).json({ account: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status }, credentials: { usuario, pass } });
+});
+
+// POST /api/admin/accounts/:id/reset-password  → genera y devuelve una nueva contraseña temporal
+router.post('/accounts/:id/reset-password', async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+  if (!user || user.schoolId !== mySchool(req)) return res.status(404).json({ error: 'Cuenta no encontrada' });
+  const pass = genPassword();
+  const bcrypt = (await import('bcryptjs')).default;
+  const passwordHash = await bcrypt.hash(pass, 10);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+  res.json({ credentials: { usuario: user.email, pass } });
+});
+
 // ── Profesores ─────────────────────────────────────────────────────────────
 router.get('/profesores', async (req, res) => {
   const schoolId = mySchool(req);
@@ -52,17 +79,19 @@ router.get('/profesores', async (req, res) => {
 
 router.post('/profesores', async (req, res) => {
   const schoolId = mySchool(req);
-  const { name, email, materias = [], capacidad } = req.body || {};
+  const { name, materias = [], capacidad } = req.body || {};
   if (!name) return res.status(400).json({ error: 'Nombre del profesor obligatorio' });
-  const finalEmail = (email || `${slugName(name)}@profe.edu`).toLowerCase();
+  const school = await prisma.school.findUnique({ where: { id: schoolId } });
+  const usuario = await uniqueUsername(name, school.name);
+  const pass = genPassword();
   const bcrypt = (await import('bcryptjs')).default;
-  const passwordHash = await bcrypt.hash(process.env.SEED_PASSWORD || 'proyecta123', 10);
-  const u = await prisma.user.create({ data: { schoolId, name, email: finalEmail, role: 'teacher', capacidad: Number(capacidad) || 3, passwordHash } });
+  const passwordHash = await bcrypt.hash(pass, 10);
+  const u = await prisma.user.create({ data: { schoolId, name, email: usuario, role: 'teacher', capacidad: Number(capacidad) || 3, passwordHash } });
   for (const m of materias) {
     const subject = await prisma.subject.upsert({ where: { schoolId_name: { schoolId, name: m } }, update: {}, create: { schoolId, name: m } });
     await prisma.teacherSubject.create({ data: { teacherId: u.id, subjectId: subject.id } });
   }
-  res.status(201).json({ profesor: { id: u.id, name: u.name, email: u.email, capacidad: u.capacidad, materias } });
+  res.status(201).json({ profesor: { id: u.id, name: u.name, email: u.email, capacidad: u.capacidad, materias }, credentials: { usuario, pass } });
 });
 
 router.patch('/profesores/:id', async (req, res) => {
@@ -317,5 +346,24 @@ router.patch('/pagos/:id', async (req, res) => {
 });
 
 const slugName = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '.');
+
+// Genera una contraseña temporal legible (para entregar al crear/restablecer una cuenta).
+function genPassword() {
+  const adj = ['Aula', 'Faro', 'Luz', 'Nube', 'Rio', 'Sol', 'Mar', 'Eco'];
+  const n = Math.floor(1000 + Math.random() * 9000);
+  return adj[Math.floor(Math.random() * adj.length)] + n;
+}
+
+// Genera un usuario único (nombre.apellido@colegio) evitando colisiones.
+async function uniqueUsername(name, schoolName) {
+  const domain = slugName(schoolName).replace(/\.+/g, '') + '.edu';
+  const base = slugName(name).replace(/\.+$/, '');
+  let candidate = `${base}@${domain}`;
+  let i = 1;
+  while (await prisma.user.findUnique({ where: { email: candidate } })) {
+    candidate = `${base}${++i}@${domain}`;
+  }
+  return candidate;
+}
 
 export default router;

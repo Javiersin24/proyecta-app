@@ -44,6 +44,19 @@ router.get('/me', authRequired, async (req, res) => {
   res.json({ user: out });
 });
 
+// POST /api/auth/change-password  { currentPassword, newPassword }
+router.post('/change-password', authRequired, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: 'Contraseña actual y nueva (mínimo 6 caracteres) son obligatorias' });
+  }
+  const ok = await bcrypt.compare(currentPassword, req.user.passwordHash);
+  if (!ok) return res.status(401).json({ error: 'La contraseña actual no es correcta' });
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({ where: { id: req.user.id }, data: { passwordHash } });
+  res.json({ ok: true });
+});
+
 // POST /api/auth/logout
 router.post('/logout', authRequired, async (req, res) => {
   await prisma.user.update({ where: { id: req.user.id }, data: { online: false } });

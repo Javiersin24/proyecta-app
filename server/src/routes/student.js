@@ -66,7 +66,7 @@ router.get('/tasks', async (req, res) => {
   for (const c of classes) {
     for (const t of c.tasks) {
       const mine = t.submissions[0];
-      const entry = { classId: c.id, className: c.name, taskId: t.id, title: t.title, due: t.due, points: t.points, status: mine?.status || 'pending', grade: mine?.grade ?? null };
+      const entry = { classId: c.id, className: c.name, taskId: t.id, title: t.title, due: t.due, dueDate: t.dueDate, points: t.points, status: mine?.status || 'pending', grade: mine?.grade ?? null };
       if (mine && (mine.status === 'done' || mine.status === 'late')) completadas.push(entry);
       else pendientes.push(entry);
     }
@@ -120,6 +120,57 @@ router.get('/calificaciones', async (req, res) => {
   const entries = await prisma.gradeEntry.findMany({ where: { groupId: group.id, studentName: req.user.name } });
   const califs = entries.map((e) => ({ materia: e.materia, valor: e.valor }));
   res.json({ grupo: group.nombre, calificaciones: califs });
+});
+
+// ── Libro de calificaciones por clase (gradebook flexible del profesor) ────
+// El estudiante NUNCA debe ver las notas de sus compañeros — todo se filtra
+// aquí mismo a su propia fila antes de responder.
+
+const GB_MAX = 5;
+function readGradebookForStudent(gbRaw, studentName) {
+  const gb = parseJSON(gbRaw, null);
+  if (!gb) return null;
+  const row = (gb.rows || []).find((r) => r.name === studentName);
+  if (!row) return null;
+  const num = (colId) => {
+    const v = parseFloat(gb.grades?.[`${row.id}::${colId}`]);
+    return Number.isFinite(v) ? Math.min(GB_MAX, Math.max(0, v)) : null;
+  };
+  const catAvg = (cat) => {
+    const xs = (cat.cols || []).map((k) => num(k.id)).filter((x) => x != null);
+    return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+  };
+  const cats = (gb.cats || []).map((cat) => ({
+    id: cat.id, name: cat.name,
+    cols: (cat.cols || []).map((k) => ({ id: k.id, label: k.label, val: num(k.id) })),
+    avg: catAvg(cat),
+  }));
+  const finals = cats.map((c) => c.avg).filter((x) => x != null);
+  const definitiva = finals.length ? finals.reduce((a, b) => a + b, 0) / finals.length : null;
+  return { cats, definitiva };
+}
+
+// GET /api/student/gradebook  → boletín: definitiva por cada clase inscrita
+router.get('/gradebook', async (req, res) => {
+  const ids = await myClassIds(req.user.id);
+  const classes = await prisma.class.findMany({ where: { id: { in: ids } }, include: { teacher: true } });
+  const rows = classes.map((c) => {
+    const data = readGradebookForStudent(c.gradebook, req.user.name);
+    return {
+      classId: c.id, name: c.name, section: c.section, paletteIdx: c.paletteIdx,
+      teacherName: c.teacher?.name || null, definitiva: data?.definitiva ?? null,
+    };
+  });
+  res.json({ classes: rows });
+});
+
+// GET /api/student/classes/:classId/gradebook  → detalle de mis notas en esa clase
+router.get('/classes/:classId/gradebook', async (req, res) => {
+  const ids = await myClassIds(req.user.id);
+  if (!ids.includes(req.params.classId)) return res.status(403).json({ error: 'No estás inscrito en esta clase' });
+  const c = await prisma.class.findUnique({ where: { id: req.params.classId } });
+  const data = readGradebookForStudent(c?.gradebook, req.user.name);
+  res.json({ gradebook: data });
 });
 
 // Encuentra el grupo administrativo del estudiante por su nombre en el roster.

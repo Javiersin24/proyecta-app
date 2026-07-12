@@ -19,7 +19,11 @@ export default function StudentTopicScreen() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <TopBar title={topic?.name} subtitle={cls.name} onBack={() => nav(-1)} />
       <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {materials.map((m) => <MaterialRow key={m.id} material={m} onProject={(mat) => setProjectMaterial(mat)} />)}
+        {materials.map((m) => (
+          <MaterialRow key={m.id} material={m}
+            onClick={() => nav('/estudiante/material', { state: { material: m, className: cls.name } })}
+            onProject={(mat) => setProjectMaterial(mat)} />
+        ))}
         {materials.length === 0 && <EmptyState icon="folder" title="Sin material" body="Tu profe aún no ha subido material a este tema." />}
       </div>
       <ProjectSheet material={projectMaterial} open={!!projectMaterial} onClose={() => setProjectMaterial(null)} />

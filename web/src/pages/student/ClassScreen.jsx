@@ -61,7 +61,7 @@ export default function StudentClassScreen() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {cls.topics.map((topic, i) => (
               <TopicAccordion key={topic.id} topic={topic} materials={cls.materials[topic.id]} canProject defaultOpen={i === 0}
-                onPickMaterial={() => nav(`/estudiante/clases/${classId}/temas/${topic.id}`)}
+                onPickMaterial={(m) => nav('/estudiante/material', { state: { material: m, className: cls.name } })}
                 onProject={(m) => setProjectMaterial(m)} />
             ))}
             {cls.topics.length === 0 && <EmptyState icon="folder" title="Sin temas todavía" body="Tu profe aún no ha publicado temas en esta clase." />}

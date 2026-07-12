@@ -2,14 +2,17 @@
 // SideNav+AccountBar en escritorio (misma regla que el prototipo, useIsWide).
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext.jsx';
+import { useLanguage } from '../lib/LanguageContext.jsx';
 import { useIsWide, TabBar, SideNav, AccountBar, IconButton } from './kit.jsx';
 import Icon from './Icon.jsx';
 
-export default function AppLayout({ navItems, brand = 'Proyecta', roleLabel, showLogoutTopBar = false }) {
+export default function AppLayout({ navItems: rawNavItems, brand = 'Proyecta', roleLabel, showLogoutTopBar = false }) {
   const wide = useIsWide();
   const nav = useNavigate();
   const loc = useLocation();
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
+  const navItems = rawNavItems.map((it) => ({ ...it, label: t(it.label) }));
 
   const activeId = navItems.find((it) => loc.pathname.startsWith(it.to))?.id;
   const goTo = (id) => { const item = navItems.find((it) => it.id === id); if (item) nav(item.to); };
@@ -23,7 +26,7 @@ export default function AppLayout({ navItems, brand = 'Proyecta', roleLabel, sho
           items={navItems}
           active={activeId}
           onChange={goTo}
-          footer={<AccountBar name={user?.name || ''} subtitle={roleLabel} onLogout={doLogout} />}
+          footer={<AccountBar name={user?.name || ''} subtitle={t(roleLabel)} onLogout={doLogout} />}
         />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ height: 56, borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', padding: '0 20px', flexShrink: 0, gap: 10 }}>

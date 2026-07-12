@@ -117,18 +117,71 @@ router.delete('/cuentas/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Proyectores — agrupados por colegio ─────────────────────────────────────
-router.get('/proyectores', async (req, res) => {
-  const projectors = await prisma.projector.findMany({ include: { school: true }, orderBy: { name: 'asc' } });
-  const grupos = {};
-  for (const p of projectors) {
-    const key = p.school?.name || 'Sin colegio';
-    (grupos[key] ||= { colegio: key, enLinea: 0, proyectores: [] });
-    grupos[key].proyectores.push({ id: p.id, name: p.name, status: p.status, activity: p.activity });
-    if (p.status === 'live' || p.status === 'online') grupos[key].enLinea++;
-  }
-  res.json({ porColegio: Object.values(grupos) });
+// ── Proyectores — CRUD completo, agrupados por colegio ──────────────────────
+// Flujo: el súper-admin crea el proyector aquí y genera un código de
+// activación; el dispositivo del aula lo ingresa una vez y queda "vinculado".
+const serializeProjector = (p) => ({
+  id: p.id, name: p.name, aula: p.aula, school: p.school?.name || 'Sin colegio', schoolId: p.schoolId,
+  code: p.code, enabled: p.enabled, linked: p.linked, status: p.status, activity: p.activity,
 });
+
+router.get('/proyectores', async (req, res) => {
+  const projectors = await prisma.projector.findMany({ include: { school: true }, orderBy: { aula: 'asc' } });
+  const grupos = {};
+  for (const raw of projectors) {
+    const p = serializeProjector(raw);
+    (grupos[p.school] ||= { colegio: p.school, enLinea: 0, proyectores: [] });
+    grupos[p.school].proyectores.push(p);
+    if (p.status === 'live' || p.status === 'online') grupos[p.school].enLinea++;
+  }
+  res.json({ porColegio: Object.values(grupos), proyectores: projectors.map(serializeProjector) });
+});
+
+router.post('/proyectores', async (req, res) => {
+  const { name, aula, schoolId } = req.body || {};
+  const school = await prisma.school.findUnique({ where: { id: schoolId } });
+  if (!school) return res.status(400).json({ error: 'Colegio no válido' });
+  const finalAula = (aula || '').trim() || '—';
+  const created = await prisma.projector.create({
+    data: {
+      schoolId, aula: finalAula, name: (name || '').trim() || `Proyector ${finalAula}`,
+      code: await uniqueProjectorCode(), enabled: true, linked: false, status: 'offline',
+      activity: 'Esperando primer inicio de sesión',
+    },
+    include: { school: true },
+  });
+  res.status(201).json({ proyector: serializeProjector(created) });
+});
+
+router.patch('/proyectores/:id', async (req, res) => {
+  const p = await prisma.projector.findUnique({ where: { id: req.params.id } });
+  if (!p) return res.status(404).json({ error: 'Proyector no encontrado' });
+  const { name, aula, schoolId, enabled, regenCode } = req.body || {};
+  const data = {};
+  if (name !== undefined) data.name = name;
+  if (aula !== undefined) data.aula = aula;
+  if (schoolId !== undefined) data.schoolId = schoolId;
+  if (enabled !== undefined) {
+    data.enabled = !!enabled;
+    if (!enabled) { data.status = 'offline'; data.activity = 'Suspendido por el administrador'; }
+  }
+  if (regenCode) { data.code = await uniqueProjectorCode(); data.linked = false; data.status = 'offline'; data.activity = 'Código regenerado · esperando inicio de sesión'; }
+  const updated = await prisma.projector.update({ where: { id: p.id }, data, include: { school: true } });
+  res.json({ proyector: serializeProjector(updated) });
+});
+
+router.delete('/proyectores/:id', async (req, res) => {
+  await prisma.projector.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+async function uniqueProjectorCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (;;) {
+    const code = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    if (!(await prisma.projector.findUnique({ where: { code } }))) return code;
+  }
+}
 
 // ── Facturación / ingresos (MRR, ARR, desglose por plan, renovaciones) ─────
 router.get('/facturacion', async (req, res) => {

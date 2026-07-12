@@ -1,2 +1,2 @@
-import ChatListScreen from '../shared/ChatListScreen.jsx';
-export default function TeacherChatList() { return <ChatListScreen basePath="/profesor/chat" />; }
+import ChatSplitScreen from '../shared/ChatSplitScreen.jsx';
+export default function TeacherChatList() { return <ChatSplitScreen basePath="/profesor/chat" />; }

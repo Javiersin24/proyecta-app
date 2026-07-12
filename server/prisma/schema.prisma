@@ -38,6 +38,7 @@ model School {
   payments        Payment[]
   projectors      Projector[]
   matriculaConfig MatriculaConfig?
+  events          Event[]
 }
 
 // Configuración del proceso de matrícula que controla el admin del colegio.
@@ -78,6 +79,32 @@ model User {
   conversationLinks ConversationParticipant[]
   scheduleSlots     GroupSchedule[]           @relation("SlotTeacher")
   enrollment        Enrollment?
+  reminders         Reminder[]
+}
+
+// Anuncio/evento programado, visible a todo el colegio (lo publican profesores/admin).
+model Event {
+  id        String   @id @default(cuid())
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId  String
+  title     String
+  date      String // YYYY-MM-DD
+  time      String?
+  desc      String?
+  tipo      String   @default("General") // Académico | Reunión | Salida | General
+  createdBy String
+  createdAt DateTime @default(now())
+}
+
+// Recordatorio personal (solo lo ve su dueño) — parte del Organizador.
+model Reminder {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  text      String
+  date      String?
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -272,11 +299,25 @@ model Class {
   teacherId    String
   group        Group?  @relation(fields: [groupId], references: [id])
   groupId      String?
+  gradebook    String? // JSON {cats,rows,grades} — libro de notas flexible por clase
 
-  topics  Topic[]
-  tasks   Task[]
-  posts   Post[]
-  members ClassMember[]
+  topics     Topic[]
+  tasks      Task[]
+  posts      Post[]
+  members    ClassMember[]
+  attendance ClassAttendanceEntry[]
+}
+
+// Asistencia diaria por CLASE (distinta de AttendanceEntry, que es por GRUPO/salón administrativo)
+model ClassAttendanceEntry {
+  id          String @id @default(cuid())
+  class       Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classId     String
+  studentName String
+  date        String // YYYY-MM-DD
+  estado      String // Presente | Tarde | Ausente
+
+  @@unique([classId, studentName, date])
 }
 
 model ClassMember {
@@ -331,7 +372,8 @@ model Task {
   classId String
   title   String
   desc    String?
-  due     String?
+  due     String? // texto para mostrar (ej. "Vence hoy · 18:00")
+  dueDate String? // YYYY-MM-DD — usado por el Organizador para ubicarla en el calendario
   status  String  @default("pending") // pending | dueSoon | done
   points  Int     @default(0)
   total   Int     @default(0)
@@ -396,13 +438,16 @@ model Message {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Projector {
-  id       String @id @default(cuid())
-  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  id       String  @id @default(cuid())
+  school   School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   schoolId String
   name     String
+  aula     String  @default("")
   building String?
-  code     String?
-  status   String @default("offline") // live | online | offline
+  code     String? @unique // código de activación que se ingresa en el dispositivo del aula
+  enabled  Boolean @default(true) // el súper-admin puede suspenderlo (ej. colegio atrasado en pago)
+  linked   Boolean @default(false) // true tras el primer inicio de sesión del dispositivo
+  status   String  @default("offline") // live | online | offline
   activity String?
 
   sessions ProjectionSession[]
