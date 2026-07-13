@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { get, post, uploadFile } from '../../lib/api.js';
 import { TopBar, SectionHeader, Chip, MaterialRow } from '../../ui/kit.jsx';
+import { useQuickProject } from '../shared/ProjectAction.jsx';
 import Icon from '../../ui/Icon.jsx';
 
 export default function StudentTaskScreen() {
@@ -15,6 +16,7 @@ export default function StudentTaskScreen() {
 
   const load = () => get(`/student/classes/${classId}`).then((d) => setCls(d.class));
   useEffect(() => { load(); }, [classId]);
+  const { trigger: onProject, notice } = useQuickProject(cls);
 
   if (!cls) return null;
   const task = cls.tasks.find((t) => t.id === taskId);
@@ -63,9 +65,12 @@ export default function StudentTaskScreen() {
           <>
             <SectionHeader>Material adjunto</SectionHeader>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
-              {task.files.map((f) => <MaterialRow key={f.id} material={f} />)}
+              {task.files.map((f) => <MaterialRow key={f.id} material={f} onProject={onProject} />)}
             </div>
           </>
+        )}
+        {notice && (
+          <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--ink-100)', color: 'var(--fg-2)', borderRadius: 12, fontSize: 12.5, fontWeight: 600 }}>{notice}</div>
         )}
 
         {task.rubric && (
@@ -123,7 +128,7 @@ export default function StudentTaskScreen() {
                 {mySub.grade != null ? `Calificada · ${mySub.grade}/100` : mySub.status === 'late' ? 'Entregada tarde' : 'Entregada'}
               </Chip>
             </div>
-            {mySub.file && <MaterialRow material={mySub.file} />}
+            {mySub.file && <MaterialRow material={mySub.file} onProject={onProject} />}
             {mySub.comment && <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.5, color: 'var(--fg-2)', background: 'var(--ink-50)', borderRadius: 10, padding: 12 }}>{mySub.comment}</div>}
             {mySub.grade == null && !pastDeadline && (
               <button onClick={undo} disabled={busy} style={{ marginTop: 14, width: '100%', height: 44, border: '1px solid var(--ink-200)', borderRadius: 12, background: 'var(--white)', color: 'var(--fg-2)', fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>

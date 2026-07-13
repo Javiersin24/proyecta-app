@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { get, patch } from '../../lib/api.js';
-import { TopBar, SectionHeader, Avatar } from '../../ui/kit.jsx';
+import { TopBar, SectionHeader, Avatar, MaterialRow } from '../../ui/kit.jsx';
+import { useQuickProject } from '../shared/ProjectAction.jsx';
 import Icon from '../../ui/Icon.jsx';
 
 export default function TeacherGradeScreen() {
@@ -13,6 +14,7 @@ export default function TeacherGradeScreen() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { get(`/teacher/classes/${classId}`).then((d) => setCls(d.class)); }, [classId]);
+  const { trigger: onProject, sheet: linkSheet, notice } = useQuickProject(cls, (p) => setCls((c) => ({ ...c, projector: p, projectorId: p?.id || null })));
 
   const task = cls?.tasks.find((t) => t.id === taskId);
   const sub = task?.submissions.find((s) => s.id === subId);
@@ -47,10 +49,14 @@ export default function TeacherGradeScreen() {
             <Avatar name={sub.student} size={40} />
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{sub.student}</div>
-              <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{sub.file?.name || 'Sin archivo'}</div>
+              {!sub.file && <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>Sin archivo</div>}
             </div>
           </div>
+          {sub.file && <div style={{ marginTop: 10 }}><MaterialRow material={sub.file} onProject={onProject} /></div>}
         </div>
+        {notice && (
+          <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--ink-100)', color: 'var(--fg-2)', borderRadius: 12, fontSize: 12.5, fontWeight: 600 }}>{notice}</div>
+        )}
 
         {rubric.length > 0 ? (
           <>
@@ -100,6 +106,7 @@ export default function TeacherGradeScreen() {
           cursor: 'pointer', fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 15, display: 'inline-flex', alignItems: 'center', gap: 8,
         }}><Icon name="check" size={18} stroke={2.4} /> {busy ? 'Guardando…' : 'Guardar'}</button>
       </div>
+      {linkSheet}
     </div>
   );
 }
