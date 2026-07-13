@@ -29,6 +29,16 @@ function rateLimited(userId) {
   arr.push(now); hits.set(userId, arr); return false;
 }
 
+// Qwen a veces antepone su razonamiento interno entre <think>...</think>
+// antes de la respuesta final. Lo quitamos: el profesor solo debe ver la
+// respuesta, nunca el "pensamiento" del modelo.
+function stripThinking(text) {
+  if (!text) return '';
+  let out = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  if (/<think>/i.test(out)) out = out.split(/<think>/i)[0].trim(); // se cortó por max_tokens a mitad del razonamiento
+  return out;
+}
+
 // POST /api/ai/assistant  { system, messages:[{role,content}] } → { reply }
 router.post('/assistant', async (req, res) => {
   if (!req.user.premium) return res.status(403).json({ error: 'Función Premium. Suscríbete a Inteligencia Académica.', code: 'PREMIUM_REQUIRED' });
@@ -51,10 +61,10 @@ router.post('/assistant', async (req, res) => {
   try {
     const resp = await client.chat.completions.create({
       model: MODEL,
-      max_tokens: 800,
+      max_tokens: 1200, // deja espacio de sobra: parte se consume en el razonamiento interno que luego recortamos
       messages: [{ role: 'system', content: String(system).slice(0, 12000) }, ...clean],
     });
-    const reply = (resp.choices?.[0]?.message?.content || '').trim();
+    const reply = stripThinking(resp.choices?.[0]?.message?.content || '');
     res.json({ reply: reply || 'No obtuve respuesta. Intenta reformular la pregunta.' });
   } catch (e) {
     console.error('AI assistant error:', e?.message || e);
