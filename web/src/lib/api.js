@@ -3,6 +3,10 @@
 // En producción, si el frontend se publica en un dominio distinto al backend,
 // define VITE_API_BASE (ej. https://proyecta-api.onrender.com/api) al hacer el build.
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+// Origen del backend (sin el "/api" final) para resolver rutas de archivos
+// subidos, que el servidor devuelve como ruta relativa (/api/uploads/…).
+const API_ORIGIN = API_BASE.replace(/\/api\/?$/, '');
+export const fileUrl = (p) => (!p || /^https?:\/\//i.test(p) ? p : `${API_ORIGIN}${p}`);
 const TOKEN_KEY = 'proyecta_token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
@@ -48,5 +52,5 @@ export async function uploadFile(file) {
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data = isJson ? await res.json().catch(() => ({})) : null;
   if (!res.ok) throw new ApiError(data?.error || `Error ${res.status}`, res.status);
-  return data;
+  return { ...data, url: fileUrl(data.url) };
 }

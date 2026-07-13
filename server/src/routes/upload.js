@@ -37,9 +37,11 @@ router.post('/', (req, res) => {
   upload.single('file')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'El archivo supera el límite de 25 MB' : 'No se pudo subir el archivo' });
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
-    const url = `${req.protocol}://${req.get('host')}/api/uploads/${req.file.filename}`;
+    // Ruta relativa: el frontend le antepone el origen del backend (https).
+    // Así evitamos devolver http:// detrás del proxy y romper la descarga.
     res.status(201).json({
-      name: req.file.originalname, kind: inferKind(req.file.originalname), url,
+      name: req.file.originalname, kind: inferKind(req.file.originalname),
+      url: `/api/uploads/${req.file.filename}`,
       sizeKB: Math.max(1, Math.round(req.file.size / 1024)),
     });
   });
