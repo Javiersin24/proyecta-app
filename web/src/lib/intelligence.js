@@ -339,6 +339,11 @@ export function detectClassInsights(a) {
       patrones, evidencia,
       confianza: mkConfidence({ volumen: Math.min(1, dec.counted / 8), magnitud: Math.min(1, Math.abs(trend) / 1.0), consistencia: dec.frac }),
       acciones, foco: { catName: peorCat?.name || null },
+      plan: {
+        actividad: `Una clase de ejercicios cortos de aplicación de ${peorCat ? peorCat.name : 'el tema más débil'}, resueltos en parejas.`,
+        evaluacion: 'Quiz diagnóstico breve (5–8 min) al cierre, para ubicar el punto exacto donde se rompe la comprensión.',
+        seguimiento: 'Comparar el promedio del grupo en 7 días para confirmar si la estrategia funcionó.',
+      },
     });
   }
 
@@ -377,6 +382,11 @@ export function detectClassInsights(a) {
           { prioridad: 'Media', texto: `Reevaluar ${peorCat.name} con un formato distinto para confirmar el avance` },
         ],
         foco: { catName: peorCat.name },
+        plan: {
+          actividad: `Trabajo colaborativo enfocado únicamente en ${peorCat.name} (grupos de 3, un problema guiado).`,
+          evaluacion: `Quiz corto solo de ${peorCat.name}, distinto al formato anterior.`,
+          seguimiento: `Volver a medir ${peorCat.name} en 7 días y comparar contra ${peorCat.avgPct}%.`,
+        },
       });
     }
   }
@@ -414,6 +424,11 @@ export function detectStudentInsight(student) {
         { prioridad: 'Media', texto: 'Practicar con simulacros cortos para reducir la ansiedad ante el examen' },
       ],
       foco: {},
+      plan: {
+        actividad: `Simulacros cortos y cronometrados de baja presión con ${student.name.split(' ')[0]}, subiendo el tiempo de a poco.`,
+        evaluacion: 'Una evaluación en dos partes o con tiempo extendido, para separar comprensión de ansiedad.',
+        seguimiento: 'Revisar su nota en la próxima evaluación puntual y comparar.',
+      },
     };
   }
   return null;
@@ -432,4 +447,157 @@ export function buildImpactBounds(a, catName) {
   const hi = Math.max(lo + 2, Math.round(gap * 0.55));
   const confianza = mkConfidence({ volumen: Math.min(1, a.students.length / 8), magnitud: Math.min(1, gap / 30), consistencia: 0.6 });
   return { catName: cat.name, actual: cat.avgPct, referencia, gap, lo, hi, confianza };
+}
+
+// ── Regla: "todos fallan lo mismo" → probable problema de la explicación ──────
+// Si una columna concreta la falla la mayoría del grupo, el problema rara vez
+// es de los estudiantes: apunta al concepto o a la consigna.
+export function detectUniformFailure(cls) {
+  const gb = riGradebook(cls);
+  const nStudents = gb.rows.length;
+  if (nStudents < 4) return null;
+  let worst = null;
+  gb.cats.forEach((cat) => cat.cols.forEach((col) => {
+    const vals = gb.rows.map((r) => { const v = parseFloat(gb.grades[`${r.id}::${col.id}`]); return Number.isFinite(v) ? v : null; }).filter((v) => v != null);
+    if (vals.length < Math.max(4, Math.ceil(nStudents * 0.6))) return;
+    const frac = vals.filter((v) => v < GB_PASS).length / vals.length;
+    const avg = riAvg(vals);
+    if (frac >= 0.7 && avg < GB_PASS && (!worst || frac > worst.frac)) worst = { cat: cat.name, col: col.label, frac, avg, n: vals.length };
+  }));
+  if (!worst) return null;
+  const pct = Math.round(worst.frac * 100);
+  return {
+    id: `${cls.id}-uniforme-${worst.col}`, tono: 'warn', modulo: 'explicacion',
+    titulo: `Dificultad generalizada en "${worst.col}"`,
+    hallazgo: `El ${pct}% del grupo tuvo bajo desempeño en ${worst.col} (${worst.cat}).`,
+    narrativa: `Cuando casi todo el grupo falla exactamente lo mismo (${pct}% en ${worst.col}), el problema rara vez es de los estudiantes: suele apuntar a que ese concepto o la consigna de esa evaluación necesita reforzarse o reformularse. Conviene revisar cómo se presentó ${worst.col} antes de avanzar.`,
+    patrones: [
+      `${pct}% del grupo por debajo de la nota mínima en ${worst.col}`,
+      `Promedio de ${worst.col}: ${gbFmt(worst.avg)} sobre ${worst.n} estudiantes`,
+    ],
+    evidencia: [
+      { ok: false, texto: `${worst.col}: ${gbFmt(worst.avg)} de promedio` },
+      { ok: false, texto: `${pct}% del grupo bajo la nota mínima` },
+      { ok: true, texto: `Basado en ${worst.n} estudiantes evaluados` },
+    ],
+    confianza: mkConfidence({ volumen: Math.min(1, worst.n / 8), magnitud: Math.min(1, worst.frac), consistencia: worst.frac }),
+    acciones: [
+      { prioridad: 'Alta', texto: `Reexplicar ${worst.col} con un ejemplo distinto antes de continuar` },
+      { prioridad: 'Media', texto: `Reevaluar ${worst.col} con una consigna más clara` },
+    ],
+    foco: { catName: worst.cat },
+    plan: {
+      actividad: `Reexplicación de ${worst.col} con un ejemplo nuevo y un ejercicio guiado en el tablero.`,
+      evaluacion: `Reevaluar solo ${worst.col}, con la consigna reformulada.`,
+      seguimiento: 'Verificar si el porcentaje de dificultad baja tras la reexplicación.',
+    },
+  };
+}
+
+// ── Regla: estudiante que mejora (refuerzo positivo) ─────────────────────────
+export function detectImprovement(cls) {
+  const gb = riGradebook(cls);
+  const cols = gb.cats.flatMap((c) => c.cols);
+  if (cols.length < 3) return null;
+  let best = null;
+  gb.rows.forEach((r) => {
+    const withV = cols.map((col) => { const v = parseFloat(gb.grades[`${r.id}::${col.id}`]); return Number.isFinite(v) ? v : null; }).filter((v) => v != null);
+    if (withV.length < 3) return;
+    const half = Math.floor(withV.length / 2);
+    const early = riAvg(withV.slice(0, half));
+    const late = riAvg(withV.slice(half));
+    if (early == null || late == null) return;
+    const delta = late - early;
+    if (delta >= 0.6 && late >= GB_PASS && (!best || delta > best.delta)) best = { name: r.name, early, late, delta };
+  });
+  if (!best) return null;
+  const pct = Math.round((best.delta / GB_MAX) * 100);
+  const nombre = best.name.split(' ')[0];
+  return {
+    id: `${cls.id}-mejora-${best.name}`, tono: 'good', modulo: 'refuerzo',
+    titulo: `${nombre} está mejorando`,
+    hallazgo: `${nombre} subió su desempeño ${pct}% (de ${gbFmt(best.early)} a ${gbFmt(best.late)}) en las últimas evaluaciones.`,
+    narrativa: `El avance de ${nombre} es de los más claros del grupo. Reconocerlo en clase refuerza su motivación, y su forma de resolver puede servir de ejemplo para el resto.`,
+    patrones: [`De ${gbFmt(best.early)} a ${gbFmt(best.late)} entre las primeras y las últimas notas`],
+    evidencia: [
+      { ok: true, texto: `Nota inicial: ${gbFmt(best.early)}` },
+      { ok: true, texto: `Nota reciente: ${gbFmt(best.late)}` },
+      { ok: true, texto: `Mejora: +${pct}%` },
+    ],
+    confianza: mkConfidence({ volumen: 0.7, magnitud: Math.min(1, best.delta / 2), consistencia: 0.7 }),
+    acciones: [{ prioridad: 'Media', texto: `Reconocer el avance de ${nombre} y, si se puede, usar su trabajo como ejemplo` }],
+    foco: {},
+    plan: {
+      actividad: `Invitar a ${nombre} a compartir cómo resolvió un ejercicio reciente.`,
+      evaluacion: 'Ninguna adicional — es refuerzo positivo.',
+      seguimiento: 'Mantener el acompañamiento para sostener el avance.',
+    },
+  };
+}
+
+// ── Módulo predictivo: cuántos podrían reprobar el próximo examen ────────────
+export function predictiveAtRisk(a) {
+  const enRiesgo = a.students.filter((s) => s.risk.level === 'alto');
+  if (enRiesgo.length < 1) return null;
+  const nombres = enRiesgo.slice(0, 4).map((s) => s.name.split(' ')[0]);
+  const plural = enRiesgo.length > 1;
+  return {
+    id: `${a.cls.id}-prediccion`, tono: 'bad', modulo: 'prediccion',
+    titulo: 'Riesgo de reprobación en el próximo examen',
+    hallazgo: `Si el ritmo continúa, aproximadamente ${enRiesgo.length} estudiante${plural ? 's' : ''} está${plural ? 'n' : ''} en riesgo de reprobar el próximo examen.`,
+    narrativa: `Combinando notas, asistencia y entregas, ${enRiesgo.length} estudiante${plural ? 's' : ''} (${nombres.join(', ')}${enRiesgo.length > nombres.length ? '…' : ''}) tiene${plural ? 'n' : ''} hoy baja probabilidad de aprobar. Una actividad de refuerzo esta semana podría reducir ese riesgo antes de la evaluación.`,
+    patrones: enRiesgo.slice(0, 4).map((s) => `${s.name.split(' ')[0]}: ${s.risk.prob}% de probabilidad de aprobar`),
+    evidencia: [
+      { ok: false, texto: `${enRiesgo.length} estudiante(s) en riesgo alto` },
+      { ok: a.promedio != null, texto: `Promedio del grupo: ${gbFmt(a.promedio)}` },
+      { ok: a.attendanceAvg != null, texto: `Asistencia: ${Math.round((a.attendanceAvg || 0) * 100)}%` },
+    ],
+    confianza: mkConfidence({ volumen: Math.min(1, a.students.length / 8), magnitud: Math.min(1, enRiesgo.length / Math.max(1, a.students.length)), consistencia: 0.6 }),
+    acciones: [
+      { prioridad: 'Alta', texto: 'Programar una actividad de refuerzo esta semana, antes del examen' },
+      { prioridad: 'Media', texto: 'Dar retroalimentación individual a los estudiantes en riesgo' },
+    ],
+    foco: {},
+    plan: {
+      actividad: 'Taller de refuerzo dirigido a los estudiantes en riesgo, en el mismo horario de clase.',
+      evaluacion: 'Mini-evaluación de práctica antes del examen real.',
+      seguimiento: 'Recalcular el riesgo después del refuerzo para confirmar que baja.',
+    },
+  };
+}
+
+// ── Resumen proactivo: "Hoy detecté N oportunidades de mejora" ───────────────
+// Junta los hallazgos más accionables de TODAS las clases del profesor.
+export function detectOpportunities(agg) {
+  const ops = [];
+  agg.analyses.forEach((a) => {
+    const pred = predictiveAtRisk(a);
+    if (pred) ops.push({ ...pred, className: a.cls.name });
+    detectClassInsights(a).slice(0, 1).forEach((i) => ops.push({ ...i, className: a.cls.name }));
+    const uf = detectUniformFailure(a.cls);
+    if (uf) ops.push({ ...uf, className: a.cls.name });
+    const mej = detectImprovement(a.cls);
+    if (mej) ops.push({ ...mej, className: a.cls.name });
+  });
+  const rank = { bad: 0, warn: 1, neutral: 2, good: 3 };
+  ops.sort((x, y) => (rank[x.tono] ?? 2) - (rank[y.tono] ?? 2));
+  // dedup por id
+  const seen = new Set();
+  return ops.filter((o) => (seen.has(o.id) ? false : (seen.add(o.id), true))).slice(0, 5);
+}
+
+// Todos los insights detallados de una clase (para las tarjetas del Copiloto).
+export function allClassInsights(a) {
+  const list = [...detectClassInsights(a)];
+  const uf = detectUniformFailure(a.cls);
+  if (uf) list.push(uf);
+  const pred = predictiveAtRisk(a);
+  if (pred) list.push(pred);
+  const mej = detectImprovement(a.cls);
+  if (mej) list.push(mej);
+  for (const s of [...a.students].sort((x, y) => x.risk.prob - y.risk.prob)) {
+    const si = detectStudentInsight(s);
+    if (si) { list.push(si); break; }
+  }
+  return list;
 }

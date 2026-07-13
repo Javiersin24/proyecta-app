@@ -7,7 +7,7 @@ import { useAuth } from '../../lib/AuthContext.jsx';
 import { SectionHeader, Chip, EmptyState, Avatar } from '../../ui/kit.jsx';
 import Icon from '../../ui/Icon.jsx';
 import { GB_MAX, GB_PASS, gbFmt } from '../../lib/gradebook.js';
-import { analyzeClass, riCategoryTrend, generateClassRecomendaciones, RISK_META, detectClassInsights, detectStudentInsight } from '../../lib/intelligence.js';
+import { analyzeClass, riCategoryTrend, generateClassRecomendaciones, RISK_META, allClassInsights } from '../../lib/intelligence.js';
 import { InsightStatGrid, TONE_META, toneFor, RiskBadge, RecCard, StudentFichaModal, ReportModal, adminBtnGhost } from './intelligenceParts.jsx';
 import { InsightCard } from './copilotParts.jsx';
 
@@ -65,10 +65,8 @@ export default function ClassAnalysisTab({ classId }) {
   const sorted = [...a.students].sort((x, y) => x.risk.prob - y.risk.prob);
   const ficha = fichaName ? a.students.find((s) => s.name === fichaName) : null;
 
-  // Explicaciones inteligentes de este grupo (patrones de clase + estudiante-caso).
-  const classInsights = [...detectClassInsights(a)];
-  for (const s of sorted) { const si = detectStudentInsight(s); if (si) { classInsights.push(si); break; } }
-  const topInsights = classInsights.slice(0, 3);
+  // Explicaciones inteligentes de este grupo (todas las reglas del motor).
+  const topInsights = allClassInsights(a).slice(0, 5);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

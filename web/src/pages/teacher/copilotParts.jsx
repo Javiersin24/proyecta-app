@@ -17,6 +17,37 @@ const PRIO_META = {
   Baja: { bg: 'var(--indigo-50)', fg: 'var(--indigo-700)' },
 };
 
+const MODULO_META = {
+  explicacion: { label: 'Explicación inteligente', icon: 'sparkles' },
+  prediccion: { label: 'Predicción', icon: 'trendDown' },
+  refuerzo: { label: 'Refuerzo positivo', icon: 'trendUp' },
+};
+
+// Cadena del motor pedagógico: Actividad → Evaluación → Seguimiento.
+const PlanChain = ({ plan }) => {
+  const pasos = [
+    { k: 'Actividad sugerida', v: plan.actividad, icon: 'target' },
+    { k: 'Evaluación sugerida', v: plan.evaluacion, icon: 'clipboard' },
+    { k: 'Seguimiento', v: plan.seguimiento, icon: 'clock' },
+  ].filter((p) => p.v);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {pasos.map((p, i) => (
+        <div key={i} style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ width: 26, height: 26, borderRadius: 8, background: 'var(--indigo-50)', display: 'grid', placeItems: 'center', flexShrink: 0 }}><Icon name={p.icon} size={13} color="var(--indigo-600)" /></div>
+            {i < pasos.length - 1 && <div style={{ width: 2, flex: 1, minHeight: 14, background: 'var(--ink-200)' }} />}
+          </div>
+          <div style={{ paddingBottom: i < pasos.length - 1 ? 12 : 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--fg-3)' }}>{p.k}</div>
+            <div style={{ fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.45, marginTop: 1 }}>{p.v}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // Barra de nivel de confianza (segmentada, estilo del diseño).
 export const ConfidenceBar = ({ confianza }) => {
   if (!confianza) return null;
@@ -32,6 +63,21 @@ export const ConfidenceBar = ({ confianza }) => {
         {Array.from({ length: 10 }).map((_, i) => (
           <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: i < bars ? color : 'var(--ink-100)' }} />
         ))}
+      </div>
+    </div>
+  );
+};
+
+// Tarjeta compacta para el resumen proactivo "Hoy detecté N oportunidades".
+const OP_ICON = { bad: 'alertTriangle', warn: 'target', good: 'trendUp', neutral: 'sparkles' };
+export const OpportunityCard = ({ op }) => {
+  const t = TONE_META[op.tono] || TONE_META.neutral;
+  return (
+    <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start', background: 'var(--white)', border: '1px solid var(--border-subtle)', borderLeft: `4px solid ${t.icon}`, borderRadius: 12, padding: '12px 14px' }}>
+      <div style={{ width: 30, height: 30, borderRadius: 9, background: t.bg, display: 'grid', placeItems: 'center', flexShrink: 0 }}><Icon name={OP_ICON[op.tono] || 'sparkles'} size={15} color={t.icon} /></div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.4, fontWeight: 600 }}>{op.hallazgo}</div>
+        {op.className && <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 2 }}>{op.className}</div>}
       </div>
     </div>
   );
@@ -89,14 +135,15 @@ export const InsightCard = ({ insight }) => {
     } finally { setLoading(false); }
   };
 
+  const mod = MODULO_META[insight.modulo] || MODULO_META.explicacion;
   return (
     <div style={{ background: 'var(--white)', border: '1px solid var(--border-subtle)', borderRadius: 16, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, padding: '14px 16px', background: t.bg }}>
         <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.7)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-          <Icon name="sparkles" size={17} color={t.icon} />
+          <Icon name={mod.icon} size={17} color={t.icon} />
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: t.fg, opacity: 0.85 }}>Explicación inteligente</div>
+          <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: t.fg, opacity: 0.85 }}>{mod.label}</div>
           <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--fg-1)', marginTop: 1 }}>{insight.titulo}</div>
         </div>
       </div>
@@ -130,6 +177,13 @@ export const InsightCard = ({ insight }) => {
             );
           })}
         </div>
+
+        {insight.plan && (
+          <>
+            <Label>Plan sugerido</Label>
+            <PlanChain plan={insight.plan} />
+          </>
+        )}
 
         {deep && (
           <div style={{ marginTop: 14, background: 'var(--indigo-50)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
