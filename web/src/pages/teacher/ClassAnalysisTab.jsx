@@ -7,8 +7,9 @@ import { useAuth } from '../../lib/AuthContext.jsx';
 import { SectionHeader, Chip, EmptyState, Avatar } from '../../ui/kit.jsx';
 import Icon from '../../ui/Icon.jsx';
 import { GB_MAX, GB_PASS, gbFmt } from '../../lib/gradebook.js';
-import { analyzeClass, riCategoryTrend, generateClassRecomendaciones, RISK_META } from '../../lib/intelligence.js';
+import { analyzeClass, riCategoryTrend, generateClassRecomendaciones, RISK_META, detectClassInsights, detectStudentInsight } from '../../lib/intelligence.js';
 import { InsightStatGrid, TONE_META, toneFor, RiskBadge, RecCard, StudentFichaModal, ReportModal, adminBtnGhost } from './intelligenceParts.jsx';
+import { InsightCard } from './copilotParts.jsx';
 
 export default function ClassAnalysisTab({ classId }) {
   const { user } = useAuth();
@@ -64,6 +65,11 @@ export default function ClassAnalysisTab({ classId }) {
   const sorted = [...a.students].sort((x, y) => x.risk.prob - y.risk.prob);
   const ficha = fichaName ? a.students.find((s) => s.name === fichaName) : null;
 
+  // Explicaciones inteligentes de este grupo (patrones de clase + estudiante-caso).
+  const classInsights = [...detectClassInsights(a)];
+  for (const s of sorted) { const si = detectStudentInsight(s); if (si) { classInsights.push(si); break; } }
+  const topInsights = classInsights.slice(0, 3);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 2px 4px', gap: 8, flexWrap: 'wrap' }}>
@@ -85,6 +91,15 @@ export default function ClassAnalysisTab({ classId }) {
             {trend > 0 ? `Mejora de ${((trend / GB_MAX) * 100).toFixed(0)}%` : `Bajó ${Math.abs((trend / GB_MAX) * 100).toFixed(0)}%`} entre las primeras y últimas notas registradas.
           </span>
         </div>
+      )}
+
+      {topInsights.length > 0 && (
+        <>
+          <SectionHeader>Explicaciones inteligentes</SectionHeader>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {topInsights.map((ins) => <InsightCard key={ins.id} insight={ins} />)}
+          </div>
+        </>
       )}
 
       <SectionHeader>Análisis por tema</SectionHeader>

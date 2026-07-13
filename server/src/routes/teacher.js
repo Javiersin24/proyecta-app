@@ -168,6 +168,24 @@ router.put('/classes/:classId/asistencia', ownClass, async (req, res) => {
   res.json({ entry });
 });
 
+// PUT /api/teacher/classes/:classId/asistencia/bulk  { date?, registros: {studentName: estado} }
+// Guarda la asistencia de todos los estudiantes marcados de una vez. Solo se
+// guardan los que el profesor marcó — los no marcados NO crean registro.
+router.put('/classes/:classId/asistencia/bulk', ownClass, async (req, res) => {
+  const date = req.body?.date || todayISO();
+  const registros = req.body?.registros || {};
+  const valid = new Set(['Presente', 'Tarde', 'Ausente']);
+  const entries = Object.entries(registros).filter(([name, estado]) => name && valid.has(estado));
+  await prisma.$transaction(entries.map(([studentName, estado]) =>
+    prisma.classAttendanceEntry.upsert({
+      where: { classId_studentName_date: { classId: req.params.classId, studentName, date } },
+      update: { estado },
+      create: { classId: req.params.classId, studentName, date, estado },
+    })
+  ));
+  res.json({ ok: true, saved: entries.length });
+});
+
 // GET /api/teacher/classes/:classId/asistencia/historial  → últimos días con registros
 router.get('/classes/:classId/asistencia/historial', ownClass, async (req, res) => {
   const entries = await prisma.classAttendanceEntry.findMany({

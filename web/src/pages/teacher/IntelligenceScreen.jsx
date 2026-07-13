@@ -8,11 +8,12 @@ import { useAuth } from '../../lib/AuthContext.jsx';
 import { TopBar, SectionHeader, Chip, EmptyState, Avatar, IconButton } from '../../ui/kit.jsx';
 import Icon from '../../ui/Icon.jsx';
 import { GB_MAX, GB_PASS, gbFmt } from '../../lib/gradebook.js';
-import { analyzeTeacherClasses, generateRecomendaciones, generateTendencias, RISK_META } from '../../lib/intelligence.js';
+import { analyzeTeacherClasses, generateRecomendaciones, generateTendencias, RISK_META, detectClassInsights, detectStudentInsight } from '../../lib/intelligence.js';
 import {
   InsightStatGrid, TONE_META, toneFor, RiskBadge, RecCard, CompareCard,
   StudentFichaModal, ReportModal, AIAssistantPanel, adminBtnGhost,
 } from './intelligenceParts.jsx';
+import { InsightCard, ImpactSimulatorPanel } from './copilotParts.jsx';
 
 // ── Pantalla de actualización a Premium (profesor sin acceso) ────────────────
 function PremiumUpsell() {
@@ -69,6 +70,7 @@ export default function IntelligenceScreen() {
   const [ficha, setFicha] = useState(null);
   const [reporte, setReporte] = useState(null);
   const [asistente, setAsistente] = useState(false);
+  const [simulador, setSimulador] = useState(false);
 
   const isPremium = !!user?.premium;
 
@@ -112,6 +114,15 @@ export default function IntelligenceScreen() {
   const topRiesgo = [...agg.allStudents].sort((a, b) => a.risk.prob - b.risk.prob).slice(0, 5);
   const fichaCls = ficha ? agg.misClases.find((c) => c.id === ficha.classId) : null;
 
+  // Explicaciones inteligentes: patrones de clase + el estudiante-caso más claro.
+  const insights = [];
+  agg.analyses.forEach((a) => detectClassInsights(a).forEach((i) => insights.push(i)));
+  for (const s of [...agg.allStudents].sort((a, b) => a.risk.prob - b.risk.prob)) {
+    const si = detectStudentInsight(s);
+    if (si) { insights.push(si); break; }
+  }
+  const topInsights = insights.slice(0, 4);
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <TopBar title="Inteligencia académica" subtitle={`${agg.misClases.length} clase${agg.misClases.length !== 1 ? 's' : ''} analizada${agg.misClases.length !== 1 ? 's' : ''}`}
@@ -125,11 +136,29 @@ export default function IntelligenceScreen() {
         <button onClick={() => setAsistente(true)} style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', cursor: 'pointer', background: 'var(--indigo-500)', border: 0, borderRadius: 16, padding: '16px 18px', marginTop: 8 }}>
           <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.18)', display: 'grid', placeItems: 'center', flexShrink: 0 }}><Icon name="sparkles" size={21} color="#fff" /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 800, color: '#fff' }}>Pregúntale a la IA sobre tus clases</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)', marginTop: 1 }}>"¿Qué estudiantes necesitan más apoyo?", "Resume el rendimiento del grupo"…</div>
+            <div style={{ fontSize: 14.5, fontWeight: 800, color: '#fff' }}>Copiloto Pedagógico</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)', marginTop: 1 }}>Pregúntale sobre tus clases: "¿Qué estudiantes necesitan más apoyo?"…</div>
           </div>
           <Icon name="chevron" size={18} color="#fff" />
         </button>
+
+        <button onClick={() => setSimulador(true)} style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', cursor: 'pointer', background: 'var(--white)', border: '1px solid var(--border-subtle)', borderRadius: 16, padding: '14px 16px', marginTop: 8 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 11, background: 'var(--indigo-50)', display: 'grid', placeItems: 'center', flexShrink: 0 }}><Icon name="target" size={19} color="var(--indigo-600)" /></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--fg-1)' }}>Simulador de Impacto</div>
+            <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 1 }}>"¿Qué pasaría si hago un taller de refuerzo?"</div>
+          </div>
+          <Icon name="chevron" size={18} color="var(--fg-3)" />
+        </button>
+
+        {topInsights.length > 0 && (
+          <>
+            <SectionHeader>Explicaciones inteligentes</SectionHeader>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {topInsights.map((ins) => <InsightCard key={ins.id} insight={ins} />)}
+            </div>
+          </>
+        )}
 
         <SectionHeader>Resumen general</SectionHeader>
         <InsightStatGrid stats={[
@@ -210,6 +239,7 @@ export default function IntelligenceScreen() {
       </div>
 
       {asistente && <AIAssistantPanel agg={agg} onClose={() => setAsistente(false)} />}
+      {simulador && <ImpactSimulatorPanel agg={agg} onClose={() => setSimulador(false)} />}
       {ficha && fichaCls && <StudentFichaModal cls={fichaCls} student={ficha} onClose={() => setFicha(null)} onReport={setReporte} />}
       {reporte && <ReportModal data={reporte} onClose={() => setReporte(null)} />}
     </div>

@@ -13,15 +13,17 @@ export default function TeacherAsistenciaScreen() {
   const [classes, setClasses] = useState(null);
   const [selId, setSelId] = useState(null);
   const [vista, setVista] = useState('hoy');
-  const [asistencia, setAsistencia] = useState({});
+  const [draft, setDraft] = useState({}); // selección en curso (sin guardar aún)
   const [historial, setHistorial] = useState([]);
   const [guardado, setGuardado] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => { get('/teacher/classes').then((d) => setClasses(d.classes)); }, []);
 
   const clase = classes?.find((c) => c.id === selId);
 
-  const loadHoy = (classId) => get(`/teacher/classes/${classId}/asistencia`).then((d) => setAsistencia(d.asistencia));
+  // Precarga lo que ya se haya guardado hoy (para poder corregir), sin inventar "Presente".
+  const loadHoy = (classId) => get(`/teacher/classes/${classId}/asistencia`).then((d) => setDraft(d.asistencia || {}));
   const loadHistorial = (classId) => get(`/teacher/classes/${classId}/asistencia/historial`).then((d) => setHistorial(d.historial));
 
   useEffect(() => {
@@ -66,8 +68,20 @@ export default function TeacherAsistenciaScreen() {
   }
 
   const roster = (clase.students || []).map((s) => s.name);
-  const setVal = async (st, val) => { await put(`/teacher/classes/${clase.id}/asistencia`, { studentName: st, estado: val }); setAsistencia((a) => ({ ...a, [st]: val })); setGuardado(false); };
-  const count = (v) => roster.filter((st) => (asistencia[st] || 'Presente') === v).length;
+  const setVal = (st, val) => { setDraft((d) => ({ ...d, [st]: val })); setGuardado(false); };
+  const markAllPresent = () => { setDraft(Object.fromEntries(roster.map((st) => [st, 'Presente']))); setGuardado(false); };
+  const count = (v) => roster.filter((st) => draft[st] === v).length;
+  const marcados = roster.filter((st) => draft[st]).length;
+  const sinMarcar = roster.length - marcados;
+
+  const guardar = async () => {
+    const registros = {};
+    roster.forEach((st) => { if (draft[st]) registros[st] = draft[st]; });
+    if (!Object.keys(registros).length || saving) return;
+    setSaving(true);
+    try { await put(`/teacher/classes/${clase.id}/asistencia/bulk`, { registros }); setGuardado(true); }
+    finally { setSaving(false); }
+  };
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -89,10 +103,15 @@ export default function TeacherAsistenciaScreen() {
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 12.5, color: 'var(--fg-3)' }}>Toca un estado para cambiarlo.</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ fontSize: 12.5, color: sinMarcar ? 'var(--coral-700)' : 'var(--fg-3)', fontWeight: 600 }}>
+                {sinMarcar ? `${sinMarcar} sin marcar` : 'Todos marcados'}
+              </div>
+              <button onClick={markAllPresent} style={{ height: 30, padding: '0 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700, border: '1px solid var(--ink-200)', background: 'var(--white)', color: 'var(--fg-2)' }}>Marcar todos presentes</button>
+            </div>
             <div style={{ background: 'var(--white)', border: '1px solid var(--border-subtle)', borderRadius: 14, overflow: 'hidden' }}>
               {roster.map((st, i) => {
-                const val = asistencia[st] || 'Presente';
+                const val = draft[st]; // sin marcar por defecto
                 return (
                   <div key={st} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderTop: i === 0 ? 'none' : '1px solid var(--ink-200)' }}>
                     <Avatar name={st} size={34} />
@@ -107,8 +126,8 @@ export default function TeacherAsistenciaScreen() {
                 );
               })}
             </div>
-            <button onClick={() => setGuardado(true)} style={{ height: 48, border: 0, borderRadius: 12, cursor: 'pointer', background: guardado ? 'var(--success-500)' : 'var(--indigo-600)', color: '#fff', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              {guardado ? <><Icon name="check" size={18} stroke={2.6} /> Asistencia guardada</> : 'Confirmar asistencia'}
+            <button onClick={guardar} disabled={saving || marcados === 0} style={{ height: 48, border: 0, borderRadius: 12, cursor: saving || marcados === 0 ? 'default' : 'pointer', background: marcados === 0 ? 'var(--ink-300)' : guardado ? 'var(--success-500)' : 'var(--indigo-600)', color: '#fff', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              {saving ? 'Guardando…' : guardado ? <><Icon name="check" size={18} stroke={2.6} /> Asistencia guardada</> : `Guardar asistencia${marcados ? ` (${marcados})` : ''}`}
             </button>
           </>
         ) : (
