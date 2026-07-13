@@ -197,6 +197,32 @@ router.put('/classes/:classId/gradebook', ownClass, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Inteligencia Académica (Premium) ────────────────────────────────────────
+// Un solo endpoint que devuelve, para TODAS las clases del profesor, el paquete
+// que la analítica del frontend necesita (notas + asistencia + tareas). Así el
+// navegador hace 1 llamada en vez de N y corre los cálculos localmente.
+router.get('/intelligence', async (req, res) => {
+  if (!req.user.premium) return res.status(403).json({ error: 'Función Premium. Suscríbete a Inteligencia Académica para usarla.', code: 'PREMIUM_REQUIRED' });
+  const classes = await prisma.class.findMany({ where: { teacherId: req.user.id }, include: CLASS_INCLUDE });
+  const out = [];
+  for (const c of classes) {
+    const s = serializeClass(c, { includeStudents: true });
+    // Asistencia: historial (todos los días con registros) + hoy
+    const entries = await prisma.classAttendanceEntry.findMany({ where: { classId: c.id }, orderBy: { date: 'desc' } });
+    const byDate = {};
+    for (const e of entries) (byDate[e.date] ||= {})[e.studentName] = e.estado;
+    const historial = Object.keys(byDate).sort((a, b) => b.localeCompare(a)).map((date) => ({ date, registros: byDate[date] }));
+    const hoy = byDate[todayISO()] || {};
+    out.push({
+      id: s.id, name: s.name, section: s.section, teacher: s.teacher,
+      students: s.students || [], tasks: s.tasks || [],
+      gradebook: parseJSON(c.gradebook, null),
+      attendanceHistorial: historial, asistencia: hoy,
+    });
+  }
+  res.json({ classes: out });
+});
+
 function randomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const pick = (n) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');

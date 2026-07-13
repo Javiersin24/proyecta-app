@@ -1,27 +1,10 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { get, put } from '../../lib/api.js';
 import { TopBar, Avatar, Chip, EmptyState } from '../../ui/kit.jsx';
+import { GB_MAX, GB_PASS, gbFmt, gbColor, gbId, buildDefaultGradebook } from '../../lib/gradebook.js';
 import Icon from '../../ui/Icon.jsx';
 
 const PALETTE = ['var(--indigo-500)', 'var(--coral-500)', '#0EA5A0', '#8B5CF6', '#D99400'];
-const GB_MAX = 5, GB_PASS = 3;
-const gbFmt = (n) => (n == null ? '—' : n.toFixed(1));
-const gbColor = (n) => (n == null ? 'var(--fg-3)' : n >= GB_PASS ? '#1a6b47' : '#B42318');
-let seq = 0;
-const gbId = (p) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
-
-function buildDefaultGradebook(roster) {
-  return {
-    cats: [
-      { id: gbId('cat'), name: 'Talleres', cols: [{ id: gbId('c'), label: 'Taller 1' }, { id: gbId('c'), label: 'Taller 2' }] },
-      { id: gbId('cat'), name: 'Tareas', cols: [{ id: gbId('c'), label: 'Tarea 1' }, { id: gbId('c'), label: 'Tarea 2' }] },
-      { id: gbId('cat'), name: 'Quizes', cols: [{ id: gbId('c'), label: 'Quiz 1' }] },
-      { id: gbId('cat'), name: 'Ejercicios', cols: [{ id: gbId('c'), label: 'Ejercicio 1' }] },
-    ],
-    rows: roster.map((name) => ({ id: gbId('r'), name })),
-    grades: {},
-  };
-}
 
 export default function TeacherCalificacionesScreen() {
   const [classes, setClasses] = useState(null);

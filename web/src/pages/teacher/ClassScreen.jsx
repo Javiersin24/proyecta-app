@@ -7,6 +7,7 @@ import { Tabs, Avatar, TopicAccordion, TaskRow, EmptyState } from '../../ui/kit.
 import { useQuickProject } from '../shared/ProjectAction.jsx';
 import ProjectingStrip from '../shared/ProjectingStrip.jsx';
 import { ComposePostSheet, AddTopicSheet, AddMaterialSheet, AddTaskSheet, ConfirmDeleteClassSheet } from './sheets.jsx';
+import ClassAnalysisTab from './ClassAnalysisTab.jsx';
 
 const PALETTE = [['#4F46E5', '#5C6FD9'], ['#0EA5A0', '#22C9C0'], ['#8B5CF6', '#A78BFA'], ['#F2994A', '#FF7A52'], ['#3730A3', '#6366F1']];
 
@@ -47,7 +48,7 @@ export default function TeacherClassScreen() {
         </div>
       </div>
 
-      <Tabs tabs={[{ id: 'feed', label: 'Tablón' }, { id: 'topics', label: 'Temas' }, { id: 'tasks', label: 'Tareas' }]} active={tab} onChange={setTab} />
+      <Tabs tabs={[{ id: 'feed', label: 'Tablón' }, { id: 'topics', label: 'Temas' }, { id: 'tasks', label: 'Tareas' }, { id: 'analisis', label: 'Análisis' }]} active={tab} onChange={setTab} />
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 16px' }}>
         {tab === 'feed' && (
@@ -99,6 +100,8 @@ export default function TeacherClassScreen() {
             {cls.tasks.length === 0 && <EmptyState icon="clipboard" title="Sin tareas" body="Crea la primera tarea." />}
           </div>
         )}
+
+        {tab === 'analisis' && <ClassAnalysisTab classId={classId} />}
       </div>
 
       {isProjecting && <ProjectingStrip />}

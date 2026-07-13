@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { get, post, del } from '../../lib/api.js';
+import { get, post, patch, del } from '../../lib/api.js';
 import { Screen, Sheet, Modal } from '../../ui/Screen.jsx';
 import { Avatar, Chip, Field, PrimaryButton, labelStyle, inputStyle } from '../../ui/kit.jsx';
 import Icon from '../../ui/Icon.jsx';
@@ -106,6 +106,12 @@ export default function SuperCuentas() {
     } finally { setBusyId(null); }
   };
 
+  const togglePremium = async (a) => {
+    setBusyId(a.id);
+    try { await patch(`/superadmin/cuentas/${a.id}`, { premium: !a.premium }); load(); }
+    finally { setBusyId(null); }
+  };
+
   const removeAccount = async (id) => { if (!confirm('¿Eliminar esta cuenta?')) return; await del(`/superadmin/cuentas/${id}`); load(); };
 
   if (!porColegio) return null;
@@ -140,6 +146,11 @@ export default function SuperCuentas() {
                 </div>
                 <Chip variant={roleVariant(a.role)}>{roleLabel[a.role] || a.role}</Chip>
                 <Chip variant={a.status === 'Activa' ? 'success' : 'warning'}>{a.status}</Chip>
+                {a.role === 'teacher' && (
+                  <button onClick={() => togglePremium(a)} disabled={busyId === a.id} title="Inteligencia Académica (Premium)" style={{ height: 30, padding: '0 10px', borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, border: a.premium ? 0 : '1px solid var(--ink-200)', background: a.premium ? '#FEF3C7' : 'var(--white)', color: a.premium ? '#92600A' : 'var(--fg-2)' }}>
+                    <Icon name="sparkles" size={13} />{a.premium ? 'Premium ✓' : 'Activar Premium'}
+                  </button>
+                )}
                 <button onClick={() => resetPassword(a)} disabled={busyId === a.id} style={{ height: 30, padding: '0 10px', border: '1px solid var(--ink-200)', background: 'var(--white)', color: 'var(--fg-2)', borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
                   {busyId === a.id ? 'Generando…' : 'Restablecer contraseña'}
                 </button>

@@ -131,11 +131,12 @@ export const Chip = ({ variant = 'muted', children }) => {
     danger:  { bg: 'var(--danger-100)', fg: '#9E241C' },
     success: { bg: 'var(--success-100)', fg: '#166F49' },
     brand:   { bg: 'var(--indigo-50)', fg: 'var(--indigo-600)' },
+    premium: { bg: '#FEF3C7', fg: '#92600A' },
   };
   const v = variants[variant] || variants.muted;
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999,
+      display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 999,
       background: v.bg, color: v.fg, fontSize: 11.5, fontWeight: 700, fontFamily: 'var(--font-sans)',
     }}>{children}</span>
   );

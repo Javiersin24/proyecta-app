@@ -23,6 +23,7 @@ import projectorRoutes from './routes/projector.js';
 import chatRoutes from './routes/chat.js';
 import organizerRoutes from './routes/organizer.js';
 import uploadRoutes from './routes/upload.js';
+import aiRoutes from './routes/ai.js';
 import { UPLOAD_DIR } from './upload-dir.js';
 
 const app = express();
@@ -41,6 +42,7 @@ app.use('/api/superadmin', superadminRoutes);
 app.use('/api/matricula', matriculaRoutes);
 app.use('/api/projector', projectorRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/api', organizerRoutes);
 
 // 404 + manejador de errores

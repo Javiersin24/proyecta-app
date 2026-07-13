@@ -66,6 +66,7 @@ model User {
   role         String // superadmin | admin | teacher | student | enrollee
   status       String   @default("Activa") // Activa | Invitada | Suspendida
   online       Boolean  @default(false)
+  premium      Boolean  @default(false) // Inteligencia Académica (Premium) — por profesor
   createdAt    DateTime @default(now())
 
   // Específico de profesor

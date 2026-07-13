@@ -5,7 +5,7 @@ import { createContext, useContext, useState } from 'react';
 // exhaustivamente cada cadena, solo lo que un profesor/estudiante ve más.
 const DICT = {
   Inicio: 'Home', Tareas: 'Tasks', Horario: 'Schedule', Asistencia: 'Attendance',
-  Calificaciones: 'Grades', Eventos: 'Events', Organizador: 'Planner', Chat: 'Chat',
+  Calificaciones: 'Grades', Inteligencia: 'Intelligence', Eventos: 'Events', Organizador: 'Planner', Chat: 'Chat',
   Ajustes: 'Settings', Más: 'More', 'Mis clases': 'My classes', 'Crear clase': 'Create class',
   'Unirme a clase': 'Join class', 'Cerrar sesión': 'Log out', Profesor: 'Teacher',
   Estudiante: 'Student', 'Tu cuenta y preferencias': 'Your account and preferences',

@@ -11,7 +11,7 @@ export function publicUser(u) {
   if (!u) return null;
   return {
     id: u.id, name: u.name, email: u.email, role: u.role, status: u.status,
-    online: u.online, schoolId: u.schoolId, capacidad: u.capacidad,
+    online: u.online, schoolId: u.schoolId, capacidad: u.capacidad, premium: u.premium,
   };
 }
 

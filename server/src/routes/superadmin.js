@@ -94,7 +94,7 @@ router.get('/cuentas', async (req, res) => {
   const grupos = {};
   for (const u of users) {
     const key = u.school?.name || 'Sin colegio';
-    (grupos[key] ||= []).push({ id: u.id, name: u.name, email: u.email, role: u.role, status: u.status });
+    (grupos[key] ||= []).push({ id: u.id, name: u.name, email: u.email, role: u.role, status: u.status, premium: u.premium });
   }
   res.json({ porColegio: Object.entries(grupos).map(([colegio, cuentas]) => ({ colegio, cuentas })) });
 });
@@ -129,12 +129,16 @@ router.post('/cuentas/:id/reset-password', async (req, res) => {
   res.json({ credentials: { usuario: user.email, pass } });
 });
 
+// Cambiar estado o activar/desactivar Premium (Inteligencia Académica) por cuenta.
 router.patch('/cuentas/:id', async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!user) return res.status(404).json({ error: 'Cuenta no encontrada' });
-  const { status } = req.body || {};
-  const updated = await prisma.user.update({ where: { id: user.id }, data: { status: status || user.status } });
-  res.json({ cuenta: { id: updated.id, status: updated.status } });
+  const { status, premium } = req.body || {};
+  const data = {};
+  if (status !== undefined) data.status = status || user.status;
+  if (premium !== undefined) data.premium = !!premium;
+  const updated = await prisma.user.update({ where: { id: user.id }, data });
+  res.json({ cuenta: { id: updated.id, status: updated.status, premium: updated.premium } });
 });
 
 router.delete('/cuentas/:id', async (req, res) => {

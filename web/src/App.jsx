@@ -19,6 +19,7 @@ import TeacherChatThread from './pages/teacher/ChatThread.jsx';
 import TeacherHorario from './pages/teacher/HorarioScreen.jsx';
 import TeacherAsistencia from './pages/teacher/AsistenciaScreen.jsx';
 import TeacherCalificaciones from './pages/teacher/CalificacionesScreen.jsx';
+import TeacherInteligencia from './pages/teacher/IntelligenceScreen.jsx';
 import TeacherMaterialViewer from './pages/teacher/MaterialViewerScreen.jsx';
 
 import StudentHome from './pages/student/Home.jsx';
@@ -57,6 +58,7 @@ const TEACHER_NAV = [
   { id: 'horario', label: 'Horario', icon: 'calendar', to: '/profesor/horario' },
   { id: 'asistencia', label: 'Asistencia', icon: 'check', to: '/profesor/asistencia' },
   { id: 'calificaciones', label: 'Calificaciones', icon: 'award', to: '/profesor/calificaciones' },
+  { id: 'inteligencia', label: 'Inteligencia', icon: 'sparkles', to: '/profesor/inteligencia' },
   { id: 'eventos', label: 'Eventos', icon: 'megaphone', to: '/profesor/eventos' },
   { id: 'agenda', label: 'Organizador', icon: 'clipboard', to: '/profesor/agenda' },
   { id: 'chat', label: 'Chat', icon: 'chat', to: '/profesor/chat' },
@@ -115,6 +117,7 @@ export default function App() {
             <Route path="horario" element={<TeacherHorario />} />
             <Route path="asistencia" element={<TeacherAsistencia />} />
             <Route path="calificaciones" element={<TeacherCalificaciones />} />
+            <Route path="inteligencia" element={<TeacherInteligencia />} />
             <Route path="eventos" element={<EventsScreen isTeacher />} />
             <Route path="agenda" element={<OrganizerScreen basePath="/profesor" isTeacher />} />
             <Route path="chat" element={<TeacherChatList />} />
