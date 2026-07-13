@@ -1,18 +1,20 @@
 // Asistente IA (Inteligencia Académica Premium). El frontend arma el contexto
 // (system) con los datos reales de las clases del profesor y manda la
-// conversación; aquí se reenvía a Claude (Anthropic) usando la clave del
-// servidor. La clave NUNCA se expone al cliente.
+// conversación; aquí se reenvía a Qwen 2.5 7B alojado en DeepInfra (API
+// compatible con OpenAI) usando la clave del servidor. La clave NUNCA se
+// expone al cliente.
 import { Router } from 'express';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { authRequired, requireRole } from '../auth.js';
 
 const router = Router();
 router.use(authRequired, requireRole('teacher'));
 
-// Modelo configurable; por defecto el recomendado. El colegio/dueño puede
-// bajarlo a uno más económico en el .env si lo desea.
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
-const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
+// Modelo configurable vía .env; por defecto Qwen 2.5 7B en DeepInfra.
+const MODEL = process.env.AI_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
+const client = process.env.DEEPINFRA_API_KEY
+  ? new OpenAI({ apiKey: process.env.DEEPINFRA_API_KEY, baseURL: 'https://api.deepinfra.com/v1/openai' })
+  : null;
 
 // Límite de uso en memoria por profesor: 40 mensajes por hora, para acotar el
 // costo si alguien abusa del chat. Se reinicia al reiniciar el servidor.
@@ -30,7 +32,7 @@ function rateLimited(userId) {
 // POST /api/ai/assistant  { system, messages:[{role,content}] } → { reply }
 router.post('/assistant', async (req, res) => {
   if (!req.user.premium) return res.status(403).json({ error: 'Función Premium. Suscríbete a Inteligencia Académica.', code: 'PREMIUM_REQUIRED' });
-  if (!anthropic) return res.status(503).json({ error: 'El asistente IA no está configurado en el servidor. Falta ANTHROPIC_API_KEY.' });
+  if (!client) return res.status(503).json({ error: 'El asistente IA no está configurado en el servidor. Falta DEEPINFRA_API_KEY.' });
   if (rateLimited(req.user.id)) return res.status(429).json({ error: 'Alcanzaste el límite de preguntas por ahora. Intenta de nuevo en un rato.' });
 
   const { system, messages } = req.body || {};
@@ -47,13 +49,12 @@ router.post('/assistant', async (req, res) => {
   }
 
   try {
-    const resp = await anthropic.messages.create({
+    const resp = await client.chat.completions.create({
       model: MODEL,
       max_tokens: 800,
-      system: String(system).slice(0, 12000),
-      messages: clean,
+      messages: [{ role: 'system', content: String(system).slice(0, 12000) }, ...clean],
     });
-    const reply = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+    const reply = (resp.choices?.[0]?.message?.content || '').trim();
     res.json({ reply: reply || 'No obtuve respuesta. Intenta reformular la pregunta.' });
   } catch (e) {
     console.error('AI assistant error:', e?.message || e);
