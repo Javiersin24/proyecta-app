@@ -26,6 +26,18 @@ router.get('/:code', async (req, res) => {
   res.json({ projector: { id: projector.id, name: projector.name, status: projector.status, activity: projector.activity }, session });
 });
 
+// POST /api/projector/:code/detener  → el propio dispositivo del salón corta
+// su proyección (ej. al presionar "atrás"/"salir" en el control remoto).
+// Sin login: el código ya identifica el proyector, y solo puede detener SU
+// PROPIA sesión — no afecta a los demás salones.
+router.post('/:code/detener', async (req, res) => {
+  const projector = await prisma.projector.findUnique({ where: { code: req.params.code } });
+  if (!projector) return res.status(404).json({ error: 'Proyector no encontrado' });
+  await prisma.projectionSession.updateMany({ where: { projectorId: projector.id, endedAt: null }, data: { endedAt: new Date() } });
+  await prisma.projector.update({ where: { id: projector.id }, data: { status: 'online', activity: 'En línea · sin actividad' } });
+  res.json({ ok: true });
+});
+
 router.use(authRequired);
 
 // GET /api/projector  → proyectores disponibles para el usuario (de su colegio)

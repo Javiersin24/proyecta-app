@@ -37,6 +37,21 @@ export default function ProjectorDisplay() {
 
   const live = state?.projector?.status === 'live' && state?.session;
 
+  // Botón "atrás"/"salir" del control remoto del proyector: corta la
+  // proyección y vuelve a la pantalla de espera. La mayoría de controles de
+  // smart TV mandan estas mismas teclas al navegador.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!live) return;
+      if (['Escape', 'Backspace', 'GoBack', 'Back', 'BrowserBack'].includes(e.key)) {
+        e.preventDefault();
+        fetch(`${API_BASE}/projector/${code}/detener`, { method: 'POST' }).catch(() => {});
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [live, code]);
+
   if (error) {
     return (
       <div style={{ height: '100vh', width: '100vw', background: 'var(--paper-50)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10 }}>

@@ -79,12 +79,14 @@ const ADMIN_NAV = [
   { id: 'matricula', label: 'Matrícula', icon: 'clipboard', to: '/admin/matricula' },
   { id: 'pagos', label: 'Pagos', icon: 'card', to: '/admin/pagos' },
   { id: 'aulas', label: 'Aulas y grupos', icon: 'calendar', to: '/admin/aulas-grupos' },
+  { id: 'settings', label: 'Ajustes', icon: 'settings', to: '/admin/ajustes' },
 ];
 const SUPER_NAV = [
   { id: 'facturacion', label: 'Ingresos', icon: 'chart', to: '/superadmin' },
   { id: 'colegios', label: 'Colegios', icon: 'home', to: '/superadmin/colegios' },
   { id: 'cuentas', label: 'Cuentas', icon: 'users', to: '/superadmin/cuentas' },
   { id: 'proyectores', label: 'Proyectores', icon: 'projector', to: '/superadmin/proyectores' },
+  { id: 'settings', label: 'Ajustes', icon: 'settings', to: '/superadmin/ajustes' },
 ];
 
 function RootRedirect() {
@@ -149,6 +151,7 @@ export default function App() {
             <Route path="pagos" element={<AdminPagos />} />
             <Route path="aulas-grupos" element={<AdminAulasGrupos />} />
             <Route path="aulas-grupos/:groupId" element={<AdminGrupoDetail />} />
+            <Route path="ajustes" element={<SettingsScreen roleLabel="Admin de colegio" />} />
           </Route>
 
           <Route path="/superadmin" element={<RequireRole roles={['superadmin']}><AppLayout navItems={SUPER_NAV} roleLabel="Súper-admin" /></RequireRole>}>
@@ -156,6 +159,7 @@ export default function App() {
             <Route path="colegios" element={<SuperColegios />} />
             <Route path="cuentas" element={<SuperCuentas />} />
             <Route path="proyectores" element={<SuperProyectores />} />
+            <Route path="ajustes" element={<SettingsScreen roleLabel="Súper-admin" />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
