@@ -114,12 +114,16 @@ function buildDeepenSystem(insight, teacherName) {
   ].join('\n');
 }
 
-// Tarjeta de Explicación Inteligente.
+// Tarjeta de Explicación Inteligente. Colapsada por defecto: solo la hipótesis,
+// la confianza y la acción principal. El detalle (patrones/evidencia/plan)
+// queda detrás de "Ver evidencia y plan completo" para no saturar la pantalla.
 export const InsightCard = ({ insight }) => {
   const { user } = useAuth();
   const t = TONE_META[insight.tono] || TONE_META.neutral;
   const [deep, setDeep] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const principal = insight.acciones?.[0];
 
   const profundizar = async () => {
     if (loading) return;
@@ -153,47 +157,67 @@ export const InsightCard = ({ insight }) => {
 
         <ConfidenceBar confianza={insight.confianza} />
 
-        {insight.patrones?.length > 0 && (
-          <>
-            <Label>Patrones detectados</Label>
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--fg-2)', lineHeight: 1.6 }}>
-              {insight.patrones.map((p, i) => <li key={i}>{p}</li>)}
-            </ul>
-          </>
-        )}
-
-        <Label>Evidencia utilizada</Label>
-        <EvidenceList evidencia={insight.evidencia} />
-
-        <Label>Acciones recomendadas</Label>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          {insight.acciones.map((ac, i) => {
-            const pm = PRIO_META[ac.prioridad] || PRIO_META.Baja;
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-                <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: pm.bg, color: pm.fg, flexShrink: 0, whiteSpace: 'nowrap' }}>{ac.prioridad}</span>
-                <span style={{ fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.45 }}>{ac.texto}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {insight.plan && (
-          <>
-            <Label>Plan sugerido</Label>
-            <PlanChain plan={insight.plan} />
-          </>
-        )}
-
-        {deep && (
-          <div style={{ marginTop: 14, background: 'var(--indigo-50)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--indigo-700)', marginBottom: 5 }}>Copiloto · análisis ampliado</div>
-            {deep}
+        {principal && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 14 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: (PRIO_META[principal.prioridad] || PRIO_META.Baja).bg, color: (PRIO_META[principal.prioridad] || PRIO_META.Baja).fg, flexShrink: 0, whiteSpace: 'nowrap' }}>{principal.prioridad}</span>
+            <span style={{ fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.45, fontWeight: 600 }}>{principal.texto}</span>
           </div>
         )}
 
-        <button onClick={profundizar} disabled={loading} style={{ ...adminBtnGhost, marginTop: 14, width: '100%', justifyContent: 'center' }}>
-          <Icon name="sparkles" size={14} />{loading ? 'Analizando…' : 'Profundizar con el Copiloto'}
+        {open && (
+          <>
+            {insight.patrones?.length > 0 && (
+              <>
+                <Label>Patrones detectados</Label>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--fg-2)', lineHeight: 1.6 }}>
+                  {insight.patrones.map((p, i) => <li key={i}>{p}</li>)}
+                </ul>
+              </>
+            )}
+
+            <Label>Evidencia utilizada</Label>
+            <EvidenceList evidencia={insight.evidencia} />
+
+            {insight.acciones.length > 1 && (
+              <>
+                <Label>Otras acciones</Label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {insight.acciones.slice(1).map((ac, i) => {
+                    const pm = PRIO_META[ac.prioridad] || PRIO_META.Baja;
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: pm.bg, color: pm.fg, flexShrink: 0, whiteSpace: 'nowrap' }}>{ac.prioridad}</span>
+                        <span style={{ fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.45 }}>{ac.texto}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {insight.plan && (
+              <>
+                <Label>Plan sugerido</Label>
+                <PlanChain plan={insight.plan} />
+              </>
+            )}
+
+            {deep && (
+              <div style={{ marginTop: 14, background: 'var(--indigo-50)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--indigo-700)', marginBottom: 5 }}>Copiloto · análisis ampliado</div>
+                {deep}
+              </div>
+            )}
+
+            <button onClick={profundizar} disabled={loading} style={{ ...adminBtnGhost, marginTop: 14, width: '100%', justifyContent: 'center' }}>
+              <Icon name="sparkles" size={14} />{loading ? 'Analizando…' : 'Profundizar con el Copiloto'}
+            </button>
+          </>
+        )}
+
+        <button onClick={() => setOpen((o) => !o)} style={{ marginTop: 12, width: '100%', border: 0, background: 'transparent', color: 'var(--indigo-600)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '4px 0' }}>
+          {open ? 'Ocultar detalle' : 'Ver evidencia y plan completo'}
+          <Icon name="chevron" size={13} color="var(--indigo-600)" style={{ transform: open ? 'rotate(-90deg)' : 'rotate(90deg)' }} />
         </button>
       </div>
     </div>
