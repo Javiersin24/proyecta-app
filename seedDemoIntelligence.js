@@ -1,0 +1,473 @@
+// Proyecta — modelo de datos
+// Plataforma educativa multi-colegio: proyección inalámbrica + aula virtual
+// (Classroom/Teams) + ERP de colegio (matrícula, pagos, horarios) + súper-admin.
+//
+// SQLite vía Prisma: no hay enums ni Json nativos, así que roles/estados van como
+// String y los campos flexibles (rúbricas, archivos de entrega) como JSON serializado.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Colegios y suscripción (dominio del súper-admin)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model School {
+  id                String    @id @default(cuid())
+  name              String
+  city              String
+  plan              String    @default("Aula") // Aula | Plantel | Campus
+  status            String    @default("Activo") // Activo | Prueba | Suspendido
+  subscriptionStart DateTime?
+  subscriptionRenew DateTime?
+  createdAt         DateTime  @default(now())
+
+  users           User[]
+  rooms           Room[]
+  subjects        Subject[]
+  grades          Grade[]
+  groups          Group[]
+  classes         Class[]
+  enrollments     Enrollment[]
+  payments        Payment[]
+  projectors      Projector[]
+  matriculaConfig MatriculaConfig?
+  events          Event[]
+}
+
+// Configuración del proceso de matrícula que controla el admin del colegio.
+model MatriculaConfig {
+  id          String  @id @default(cuid())
+  school      School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId    String  @unique
+  abierta     Boolean @default(true)
+  fechaInicio String?
+  fechaFin    String?
+  porGrado    String  @default("{}") // JSON { "6°": { cupoPorGrupo, numGrupos } }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cuentas / usuarios — 5 roles: superadmin, admin, teacher, student, enrollee
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  school       School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId     String?
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String // superadmin | admin | teacher | student | enrollee
+  status       String   @default("Activa") // Activa | Invitada | Suspendida
+  online       Boolean  @default(false)
+  premium      Boolean  @default(false) // Inteligencia Académica (Premium) — por profesor
+  createdAt    DateTime @default(now())
+
+  // Específico de profesor
+  capacidad     Int?
+  teachSubjects TeacherSubject[]
+  // "Mi salón actual": el profesor lo marca al entrar a un salón (escribiendo
+  // el código que ve en la pantalla del proyector). Desde ahí, todas sus
+  // clases proyectan ahí en un solo toque — hasta que vuelva a cambiarlo.
+  currentProjector   Projector? @relation(fields: [currentProjectorId], references: [id])
+  currentProjectorId String?
+
+  classesTaught     Class[]                   @relation("ClassTeacher")
+  classMemberships  ClassMember[]
+  submissions       Submission[]
+  messagesSent      Message[]
+  conversationLinks ConversationParticipant[]
+  scheduleSlots     GroupSchedule[]           @relation("SlotTeacher")
+  enrollment        Enrollment?
+  reminders         Reminder[]
+}
+
+// Anuncio/evento programado, visible a todo el colegio (lo publican profesores/admin).
+model Event {
+  id        String   @id @default(cuid())
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId  String
+  title     String
+  date      String // YYYY-MM-DD
+  time      String?
+  desc      String?
+  tipo      String   @default("General") // Académico | Reunión | Salida | General
+  createdBy String
+  createdAt DateTime @default(now())
+}
+
+// Recordatorio personal (solo lo ve su dueño) — parte del Organizador.
+model Reminder {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  text      String
+  date      String?
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Estructura académica: materias, grados, aulas, grupos, horarios
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Subject {
+  id       String @id @default(cuid())
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId String
+  name     String
+
+  gradeLinks   GradeSubject[]
+  teacherLinks TeacherSubject[]
+  slots        GroupSchedule[]
+
+  @@unique([schoolId, name])
+}
+
+model Grade {
+  id       String @id @default(cuid())
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId String
+  name     String // "6°", "8°", "10°"
+
+  subjects GradeSubject[]
+  groups   Group[]
+
+  @@unique([schoolId, name])
+}
+
+model GradeSubject {
+  grade     Grade   @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  gradeId   String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subjectId String
+
+  @@id([gradeId, subjectId])
+}
+
+model TeacherSubject {
+  teacher   User    @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  teacherId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subjectId String
+
+  @@id([teacherId, subjectId])
+}
+
+model Room {
+  id       String @id @default(cuid())
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId String
+  name     String
+  building String?
+  code     String?
+  status   String @default("offline") // live | online | offline
+
+  groups Group[]
+}
+
+model Group {
+  id       String @id @default(cuid())
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId String
+  grade    Grade  @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  gradeId  String
+  nombre   String // "10°B"
+  tamano   Int    @default(25)
+  room     Room?  @relation(fields: [roomId], references: [id])
+  roomId   String?
+
+  schedule    GroupSchedule[]
+  memberships GroupMember[]
+  grades      GradeEntry[]
+  attendance  AttendanceEntry[]
+  classes     Class[]
+}
+
+model GroupMember {
+  id          String  @id @default(cuid())
+  group       Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId     String
+  studentName String
+  // Vínculo opcional con la cuenta real del estudiante
+  studentId   String?
+
+  @@unique([groupId, studentName])
+}
+
+model GroupSchedule {
+  id        String  @id @default(cuid())
+  group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId   String
+  materia   String
+  subject   Subject? @relation(fields: [subjectId], references: [id])
+  subjectId String?
+  teacher   User?    @relation("SlotTeacher", fields: [teacherId], references: [id])
+  teacherId String?
+  profesor  String   @default("Sin asignar")
+  dia       String
+  hora      String
+}
+
+// Calificación consolidada del colegio (una por materia+estudiante en el grupo).
+// Solo el profesor puede escribirla; el colegio la ve en modo lectura.
+model GradeEntry {
+  id          String  @id @default(cuid())
+  group       Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId     String
+  materia     String
+  studentName String
+  valor       Float
+
+  @@unique([groupId, materia, studentName])
+}
+
+model AttendanceEntry {
+  id          String @id @default(cuid())
+  group       Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId     String
+  studentName String
+  estado      String // Presente | Tarde | Ausente
+
+  @@unique([groupId, studentName])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Matrícula (inscripción) y pagos
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Enrollment {
+  id       String @id @default(cuid())
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId String
+
+  // Cuenta del matriculado (se le habilita SOLO el portal de matrícula hasta ser asignado)
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String? @unique
+
+  name           String
+  grado          String
+  fechaNacimiento String?
+  documento      String?
+  direccion      String?
+
+  acudiente      String
+  parentesco     String?
+  telAcudiente   String?
+  emailAcudiente String?
+
+  alergias         String?
+  condiciones      String?
+  eps              String?
+  emergenciaNombre String?
+  emergenciaTel    String?
+
+  colegioAnterior String?
+  ultimoGrado     String?
+  boletinNombre   String?
+
+  metodoPago  String @default("En línea") // En línea | En colegio
+  status      String @default("Pendiente") // Pendiente | Pagado | Asignado
+  grupoNombre String?
+  createdAt   DateTime @default(now())
+}
+
+model Payment {
+  id       String @id @default(cuid())
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId String
+  student  String
+  concepto String
+  monto    Int
+  vence    String
+  status   String @default("Pendiente") // Pendiente | Pagado | Vencido
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Aula virtual: clases (salones), temas, materiales, tareas, entregas
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Class {
+  id           String  @id @default(cuid())
+  school       School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId     String
+  name         String
+  section      String?
+  code         String  @unique
+  paletteIdx   Int     @default(0)
+  teacher      User    @relation("ClassTeacher", fields: [teacherId], references: [id])
+  teacherId    String
+  group        Group?  @relation(fields: [groupId], references: [id])
+  groupId      String?
+  gradebook    String? // JSON {cats,rows,grades} — libro de notas flexible por clase
+
+  topics     Topic[]
+  tasks      Task[]
+  posts      Post[]
+  members    ClassMember[]
+  attendance ClassAttendanceEntry[]
+}
+
+// Asistencia diaria por CLASE (distinta de AttendanceEntry, que es por GRUPO/salón administrativo)
+model ClassAttendanceEntry {
+  id          String @id @default(cuid())
+  class       Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classId     String
+  studentName String
+  date        String // YYYY-MM-DD
+  estado      String // Presente | Tarde | Ausente
+
+  @@unique([classId, studentName, date])
+}
+
+model ClassMember {
+  id       String @id @default(cuid())
+  class    Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classId  String
+  student  User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId String
+
+  @@unique([classId, studentId])
+}
+
+model Topic {
+  id       String @id @default(cuid())
+  class    Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classId  String
+  name     String
+  accent   String @default("indigo")
+  order    Int    @default(0)
+
+  materials Material[]
+}
+
+model Material {
+  id        String   @id @default(cuid())
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topicId   String
+  kind      String // pdf | slides | docx | youtube | video | image | canva | link
+  name      String
+  meta      String?
+  url       String?
+  thumb     String?
+  author    String?
+  createdAt DateTime @default(now())
+}
+
+model Post {
+  id         String   @id @default(cuid())
+  class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classId    String
+  author     String
+  when       String?
+  kind       String   @default("note") // note | task
+  body       String
+  attachment String? // JSON del adjunto opcional
+  createdAt  DateTime @default(now())
+}
+
+model Task {
+  id      String  @id @default(cuid())
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classId String
+  title   String
+  desc    String?
+  due     String? // texto para mostrar (ej. "Vence hoy · 18:00")
+  dueDate String? // YYYY-MM-DD — usado por el Organizador para ubicarla en el calendario
+  status  String  @default("pending") // pending | dueSoon | done
+  points  Int     @default(0)
+  total   Int     @default(0)
+  rubric  String? // JSON de la rúbrica
+  files   String  @default("[]") // JSON de archivos de apoyo
+
+  submissions Submission[]
+}
+
+model Submission {
+  id        String  @id @default(cuid())
+  task      Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId    String
+  student   User    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId String
+  status    String  @default("pending") // pending | done | late
+  grade     Float?
+  comment   String? // retroalimentación del profesor
+  file      String? // JSON del archivo entregado
+  updatedAt DateTime @updatedAt
+
+  @@unique([taskId, studentId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chat 1:1 y grupal
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Conversation {
+  id        String   @id @default(cuid())
+  kind      String   @default("dm") // dm | class
+  className String?
+  createdAt DateTime @default(now())
+
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderId       String
+  text           String
+  read           Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Proyectores y sesiones de proyección
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Projector {
+  id       String  @id @default(cuid())
+  school   School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolId String
+  name     String
+  aula     String  @default("")
+  building String?
+  code     String? @unique // código de activación que se ingresa en el dispositivo del aula
+  enabled  Boolean @default(true) // el súper-admin puede suspenderlo (ej. colegio atrasado en pago)
+  linked   Boolean @default(false) // true tras el primer inicio de sesión del dispositivo
+  status   String  @default("offline") // live | online | offline
+  activity String?
+
+  sessions      ProjectionSession[]
+  linkedTeachers User[] // profesores que marcaron este proyector como "mi salón actual"
+}
+
+model ProjectionSession {
+  id          String    @id @default(cuid())
+  projector   Projector @relation(fields: [projectorId], references: [id], onDelete: Cascade)
+  projectorId String
+  fileName    String
+  fileUrl     String? // si hay documento real, el proyector lo muestra en pantalla completa
+  fileKind    String?
+  startedBy   String?
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+}
