@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { post, del } from '../../lib/api.js';
 import { Sheet } from '../../ui/Screen.jsx';
 import { Field, PrimaryButton, MaterialRow, labelStyle, inputStyle } from '../../ui/kit.jsx';
+import FilePicker from '../../ui/FilePicker.jsx';
 import Icon from '../../ui/Icon.jsx';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -43,37 +44,20 @@ export function AddTopicSheet({ classId, open, onClose, onCreated }) {
   );
 }
 
-const KINDS = [
-  { id: 'pdf', label: 'PDF' }, { id: 'slides', label: 'Presentación' }, { id: 'docx', label: 'Word' },
-  { id: 'youtube', label: 'Video de YouTube' }, { id: 'video', label: 'Video' }, { id: 'image', label: 'Imagen' },
-  { id: 'link', label: 'Enlace' }, { id: 'canva', label: 'Canva' },
-];
-
 export function AddMaterialSheet({ topicId, open, onClose, onCreated }) {
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState('pdf');
-  const [url, setUrl] = useState('');
+  const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const submit = async () => {
-    if (!name.trim()) return;
+    if (!file) return;
     setBusy(true);
-    try { await post(`/teacher/topics/${topicId}/materials`, { name, kind, url: url || undefined }); setName(''); setUrl(''); onCreated(); }
+    try { await post(`/teacher/topics/${topicId}/materials`, { name: file.name, kind: file.kind, url: file.url, meta: file.meta }); setFile(null); onCreated(); }
     finally { setBusy(false); }
   };
   return (
     <Sheet open={open} onClose={onClose} title="Agregar material">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Field label="Nombre" value={name} onChange={(e) => setName(e.target.value)} placeholder="Capítulo 4 · Funciones.pdf" />
-        <div>
-          <label style={labelStyle}>Tipo</label>
-          <select style={inputStyle} value={kind} onChange={(e) => setKind(e.target.value)}>
-            {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
-          </select>
-        </div>
-        {(kind === 'youtube' || kind === 'link' || kind === 'canva') && (
-          <Field label="URL" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
-        )}
-        <PrimaryButton onClick={submit} disabled={busy}>{busy ? 'Agregando…' : 'Agregar material'}</PrimaryButton>
+        <FilePicker value={file} onChange={setFile} />
+        <PrimaryButton onClick={submit} disabled={busy || !file}>{busy ? 'Agregando…' : 'Agregar material'}</PrimaryButton>
       </div>
     </Sheet>
   );
@@ -132,19 +116,9 @@ function RubricField({ rubric, onChange }) {
   );
 }
 
-const FILE_KINDS = [
-  { id: 'pdf', label: 'PDF' }, { id: 'docx', label: 'Word' }, { id: 'slides', label: 'Presentación' },
-  { id: 'image', label: 'Imagen' }, { id: 'link', label: 'Enlace' },
-];
-
 // Archivos de apoyo adjuntos a la tarea (guía, plantilla, enlace de referencia…).
 function TaskFilesField({ files, onChange }) {
-  const [draft, setDraft] = useState({ name: '', kind: 'pdf', url: '' });
-  const add = () => {
-    if (!draft.name.trim()) return;
-    onChange([...files, { id: uid(), name: draft.name, kind: draft.kind, url: draft.url || undefined, meta: FILE_KINDS.find((k) => k.id === draft.kind)?.label }]);
-    setDraft({ name: '', kind: 'pdf', url: '' });
-  };
+  const add = (f) => onChange([...files, { ...f, id: uid() }]);
   const remove = (id) => onChange(files.filter((f) => f.id !== id));
   return (
     <div>
@@ -159,15 +133,7 @@ function TaskFilesField({ files, onChange }) {
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input style={{ ...inputStyle, height: 38, flex: 1 }} placeholder="Nombre del archivo" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-        <select style={{ ...inputStyle, height: 38, width: 110 }} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })}>
-          {FILE_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
-        </select>
-        <button onClick={add} style={{ width: 38, height: 38, flexShrink: 0, border: 0, borderRadius: 9, background: 'var(--indigo-50)', color: 'var(--indigo-600)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
-          <Icon name="plus" size={16} stroke={2.2} />
-        </button>
-      </div>
+      <FilePicker value={null} onChange={add} />
     </div>
   );
 }

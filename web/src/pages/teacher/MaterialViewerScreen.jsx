@@ -44,6 +44,15 @@ export default function TeacherMaterialViewerScreen() {
           {material.meta && <div style={{ fontSize: 12.5, color: 'var(--fg-3)' }}>{material.meta}</div>}
         </div>
 
+        {material.url && (
+          <a href={material.url} target="_blank" rel="noopener noreferrer" style={{
+            height: 46, border: '1px solid var(--ink-200)', borderRadius: 12, background: 'var(--white)', color: 'var(--fg-1)',
+            fontWeight: 700, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, textDecoration: 'none',
+          }}>
+            <Icon name="download" size={16} /> Abrir / descargar archivo
+          </a>
+        )}
+
         {cls && <ProjectAction cls={cls} material={material} onLinked={(p) => setCls((c) => ({ ...c, projector: p, projectorId: p?.id || null }))} />}
       </div>
     </div>

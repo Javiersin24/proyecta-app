@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { get, post } from '../../lib/api.js';
+import { get, post, uploadFile } from '../../lib/api.js';
 import { TopBar, SectionHeader, Chip, MaterialRow } from '../../ui/kit.jsx';
 import Icon from '../../ui/Icon.jsx';
 
@@ -9,6 +9,8 @@ export default function StudentTaskScreen() {
   const nav = useNavigate();
   const [cls, setCls] = useState(null);
   const [stagedFile, setStagedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = () => get(`/student/classes/${classId}`).then((d) => setCls(d.class));
@@ -20,10 +22,16 @@ export default function StudentTaskScreen() {
   const mySub = task.submissions[0]; // backend already scopes submissions... but student class endpoint returns all submissions with student names
   const pastDeadline = task.status === 'late';
 
-  const onPickFile = (e) => {
+  const onPickFile = async (e) => {
     const f = e.target.files[0];
+    e.target.value = '';
     if (!f) return;
-    setStagedFile({ name: f.name, kind: /\.pdf$/i.test(f.name) ? 'pdf' : /\.(png|jpe?g)$/i.test(f.name) ? 'img' : 'file', size: (f.size / 1024 / 1024).toFixed(1) + ' MB', meta: 'Sin entregar aún' });
+    setUploading(true); setUploadError('');
+    try {
+      const up = await uploadFile(f);
+      setStagedFile({ name: up.name, kind: up.kind, url: up.url, meta: 'Sin entregar aún' });
+    } catch (err) { setUploadError(err.message); }
+    finally { setUploading(false); }
   };
 
   const submit = async () => {
@@ -87,9 +95,10 @@ export default function StudentTaskScreen() {
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Subir archivo</div>
                 <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 14 }}>PDF, Word, imagen o foto del cuaderno · un archivo</div>
-                <label style={{ display: 'inline-block', height: 44, lineHeight: '44px', padding: '0 22px', border: 0, borderRadius: 12, background: 'var(--indigo-500)', color: '#fff', fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-                  Elegir archivo
-                  <input type="file" style={{ display: 'none' }} onChange={onPickFile} />
+                {uploadError && <div style={{ fontSize: 12, color: 'var(--danger-500)', fontWeight: 600, marginBottom: 10 }}>{uploadError}</div>}
+                <label style={{ display: 'inline-block', height: 44, lineHeight: '44px', padding: '0 22px', border: 0, borderRadius: 12, background: uploading ? 'var(--ink-300)' : 'var(--indigo-500)', color: '#fff', fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, cursor: uploading ? 'default' : 'pointer' }}>
+                  {uploading ? 'Subiendo…' : 'Elegir archivo'}
+                  <input type="file" style={{ display: 'none' }} disabled={uploading} onChange={onPickFile} />
                 </label>
               </>
             ) : (

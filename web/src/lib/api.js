@@ -35,3 +35,18 @@ export const post = (path, body) => api(path, { method: 'POST', body });
 export const patch = (path, body) => api(path, { method: 'PATCH', body });
 export const put = (path, body) => api(path, { method: 'PUT', body });
 export const del = (path) => api(path, { method: 'DELETE' });
+
+// Sube un archivo real (multipart) y devuelve { name, kind, url, sizeKB }.
+export async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API_BASE}/upload`, {
+    method: 'POST',
+    headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+    body: fd,
+  });
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+  const data = isJson ? await res.json().catch(() => ({})) : null;
+  if (!res.ok) throw new ApiError(data?.error || `Error ${res.status}`, res.status);
+  return data;
+}

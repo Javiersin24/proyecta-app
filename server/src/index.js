@@ -22,6 +22,8 @@ import matriculaRoutes from './routes/matricula.js';
 import projectorRoutes from './routes/projector.js';
 import chatRoutes from './routes/chat.js';
 import organizerRoutes from './routes/organizer.js';
+import uploadRoutes from './routes/upload.js';
+import { UPLOAD_DIR } from './upload-dir.js';
 
 const app = express();
 app.use(cors());
@@ -29,6 +31,8 @@ app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'proyecta-api', time: new Date().toISOString() }));
 
+app.use('/api/uploads', express.static(UPLOAD_DIR));
+app.use('/api/upload', uploadRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/student', studentRoutes);

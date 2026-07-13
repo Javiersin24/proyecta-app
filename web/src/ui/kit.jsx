@@ -204,12 +204,15 @@ export const FileRow = ({ file, onClick, trailing, selected }) => {
 
 export const MaterialRow = ({ material, onClick, onProject, compact }) => {
   const v = MATERIAL_VISUAL[material.kind] || MATERIAL_VISUAL.pdf;
+  // Si no hay una acción explícita pero el archivo tiene una URL real (subida
+  // o enlace), un clic lo abre/descarga en una pestaña nueva.
+  const openFile = onClick || (material.url ? () => window.open(material.url, '_blank', 'noopener') : undefined);
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12, padding: compact ? '9px 10px' : '12px',
       border: '1px solid var(--border-subtle)', borderRadius: 12, background: 'var(--bg-surface)',
     }}>
-      <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, cursor: onClick ? 'pointer' : 'default' }}>
+      <div onClick={openFile} style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, cursor: openFile ? 'pointer' : 'default' }}>
         <div style={{ width: 38, height: 38, borderRadius: 10, background: v.bg, color: v.color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
           <Icon name={v.icon} size={18} />
         </div>
