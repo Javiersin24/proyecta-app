@@ -5,6 +5,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../db.js';
 import { authRequired, requireRole } from '../auth.js';
+import { genPassword, uniqueUsername } from './admin.js';
 
 const router = Router();
 router.use(authRequired, requireRole('superadmin'));
@@ -57,14 +58,17 @@ router.post('/colegios', async (req, res) => {
   res.status(201).json({ colegio: school });
 });
 
-// Suspender / reactivar / cambiar plan / fechas de suscripción
+// Editar nombre/ciudad, suspender/reactivar, cambiar plan y fechas de suscripción
 router.patch('/colegios/:id', async (req, res) => {
   const school = await prisma.school.findUnique({ where: { id: req.params.id } });
   if (!school) return res.status(404).json({ error: 'Colegio no encontrado' });
-  const { status, plan, subscriptionRenew } = req.body || {};
+  const { name, city, status, plan, subscriptionStart, subscriptionRenew } = req.body || {};
   const data = {};
+  if (name) data.name = name;
+  if (city !== undefined) data.city = city;
   if (status) data.status = status;
   if (plan) data.plan = plan;
+  if (subscriptionStart) data.subscriptionStart = new Date(subscriptionStart);
   if (subscriptionRenew) data.subscriptionRenew = new Date(subscriptionRenew);
   const updated = await prisma.school.update({ where: { id: school.id }, data });
   res.json({ colegio: updated });
@@ -95,13 +99,34 @@ router.get('/cuentas', async (req, res) => {
   res.json({ porColegio: Object.entries(grupos).map(([colegio, cuentas]) => ({ colegio, cuentas })) });
 });
 
+// POST /api/superadmin/cuentas  { schoolId, name, role }  → crea una cuenta en
+// cualquier colegio (admin/profesor/estudiante). Es la única forma de darle a
+// un colegio nuevo su primera cuenta de admin — de ahí en adelante ese admin
+// ya puede crear las demás cuentas desde su propio panel.
+router.post('/cuentas', async (req, res) => {
+  const { schoolId, name, role } = req.body || {};
+  if (!schoolId || !name || !['admin', 'teacher', 'student'].includes(role)) {
+    return res.status(400).json({ error: 'Colegio, nombre y tipo de cuenta (admin/profesor/estudiante) son obligatorios' });
+  }
+  const school = await prisma.school.findUnique({ where: { id: schoolId } });
+  if (!school) return res.status(404).json({ error: 'Colegio no encontrado' });
+  const usuario = await uniqueUsername(name, school.name);
+  const pass = genPassword();
+  const passwordHash = await bcrypt.hash(pass, 10);
+  const user = await prisma.user.create({ data: { schoolId, name, email: usuario, role, passwordHash } });
+  res.status(201).json({
+    account: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, school: school.name },
+    credentials: { usuario, pass },
+  });
+});
+
 router.post('/cuentas/:id/reset-password', async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!user) return res.status(404).json({ error: 'Cuenta no encontrada' });
-  const nueva = req.body?.password || Math.random().toString(36).slice(2, 10);
-  const passwordHash = await bcrypt.hash(nueva, 10);
+  const pass = genPassword();
+  const passwordHash = await bcrypt.hash(pass, 10);
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-  res.json({ ok: true, temporaryPassword: nueva });
+  res.json({ credentials: { usuario: user.email, pass } });
 });
 
 router.patch('/cuentas/:id', async (req, res) => {

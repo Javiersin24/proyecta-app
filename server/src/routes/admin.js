@@ -345,17 +345,17 @@ router.patch('/pagos/:id', async (req, res) => {
   res.json({ pago: updated });
 });
 
-const slugName = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '.');
+export const slugName = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '.');
 
 // Genera una contraseña temporal legible (para entregar al crear/restablecer una cuenta).
-function genPassword() {
+export function genPassword() {
   const adj = ['Aula', 'Faro', 'Luz', 'Nube', 'Rio', 'Sol', 'Mar', 'Eco'];
   const n = Math.floor(1000 + Math.random() * 9000);
   return adj[Math.floor(Math.random() * adj.length)] + n;
 }
 
 // Genera un usuario único (nombre.apellido@colegio) evitando colisiones.
-async function uniqueUsername(name, schoolName) {
+export async function uniqueUsername(name, schoolName) {
   const domain = slugName(schoolName).replace(/\.+/g, '') + '.edu';
   const base = slugName(name).replace(/\.+$/, '');
   let candidate = `${base}@${domain}`;
