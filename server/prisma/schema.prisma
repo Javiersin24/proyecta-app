@@ -464,6 +464,8 @@ model ProjectionSession {
   projector   Projector @relation(fields: [projectorId], references: [id], onDelete: Cascade)
   projectorId String
   fileName    String
+  fileUrl     String? // si hay documento real, el proyector lo muestra en pantalla completa
+  fileKind    String?
   startedBy   String?
   startedAt   DateTime  @default(now())
   endedAt     DateTime?

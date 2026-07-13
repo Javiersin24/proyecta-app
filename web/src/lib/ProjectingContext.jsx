@@ -8,8 +8,9 @@ export function ProjectingProvider({ children }) {
 
   const listProjectors = useCallback(() => get('/projector').then((d) => d.projectors), []);
 
-  const start = useCallback(async (projector, fileName, classId) => {
-    await post(`/projector/${projector.id}/project`, { fileName, classId });
+  const start = useCallback(async (projector, material, classId) => {
+    const fileName = material.name;
+    await post(`/projector/${projector.id}/project`, { fileName, fileUrl: material.url, fileKind: material.kind, classId });
     setSession({ projectorId: projector.id, projectorName: projector.name, fileName });
   }, []);
 

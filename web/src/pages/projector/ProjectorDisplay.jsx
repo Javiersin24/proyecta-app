@@ -3,6 +3,7 @@
 // proyectar desde su dispositivo con un solo toque, sin QR ni configuración.
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { fileUrl } from '../../lib/api.js';
 import Icon from '../../ui/Icon.jsx';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -67,10 +68,8 @@ export default function ProjectorDisplay() {
       )}
 
       {live && (
-        <div style={{ flex: 1, position: 'relative', background: 'repeating-linear-gradient(135deg,#EEF0FB,#EEF0FB 14px,#E4E7F5 14px,#E4E7F5 28px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, color: 'var(--fg-2)', background: 'rgba(255,255,255,0.85)', padding: '9px 18px', borderRadius: 12 }}>
-            {state.session.fileName}
-          </div>
+        <div style={{ flex: 1, position: 'relative', background: '#0d0f16', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          <ProjectedContent session={state.session} />
           <div style={{ position: 'absolute', top: 16, left: 16, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.92)', padding: '8px 16px', borderRadius: 999, boxShadow: 'var(--shadow-sm)' }}>
             <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--coral-500)', animation: 'pulse 1.4s infinite' }} />
             <span style={{ fontWeight: 700, fontSize: 12.5 }}>{state.projector.name} · {state.session.startedBy}</span>
@@ -87,4 +86,43 @@ export default function ProjectorDisplay() {
 function fmtClock() {
   const d = new Date();
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function youtubeEmbed(url) {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([\w-]{6,})/);
+  return m ? `https://www.youtube.com/embed/${m[1]}?autoplay=1` : url;
+}
+
+// Muestra el documento real en pantalla completa. PDF, imagen y video se
+// renderizan directo (mismo origen); Word/PowerPoint y otros no tienen
+// previsualización nativa en el navegador, así que se muestra un aviso claro
+// en vez de enviar el archivo a un visor externo de terceros.
+function ProjectedContent({ session }) {
+  const { fileKind, fileName } = session;
+  const url = fileUrl(session.fileUrl);
+  if (!url) {
+    return <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, color: '#fff', background: 'rgba(255,255,255,0.12)', padding: '9px 18px', borderRadius: 12 }}>{fileName}</div>;
+  }
+  if (fileKind === 'image') {
+    return <img src={url} alt={fileName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />;
+  }
+  if (fileKind === 'video') {
+    return <video src={url} controls autoPlay style={{ maxWidth: '100%', maxHeight: '100%' }} />;
+  }
+  if (fileKind === 'youtube') {
+    return <iframe title={fileName} src={youtubeEmbed(url)} allow="autoplay; encrypted-media" style={{ width: '100%', height: '100%', border: 0 }} />;
+  }
+  if (fileKind === 'pdf') {
+    return <iframe title={fileName} src={url} style={{ width: '100%', height: '100%', border: 0, background: '#fff' }} />;
+  }
+  if (fileKind === 'link') {
+    return <iframe title={fileName} src={url} style={{ width: '100%', height: '100%', border: 0, background: '#fff' }} />;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, color: '#fff' }}>
+      <Icon name="file" size={40} color="rgba(255,255,255,0.6)" />
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16 }}>{fileName}</div>
+      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}>Este tipo de archivo no se puede previsualizar aquí — ábrelo desde tu dispositivo.</div>
+    </div>
+  );
 }

@@ -34,13 +34,15 @@ router.get('/', async (req, res) => {
   res.json({ projectors });
 });
 
-// POST /api/projector/:id/project  { fileName, classId }
-// Vincula y proyecta: marca el proyector como "live" y abre una sesión.
+// POST /api/projector/:id/project  { fileName, fileUrl, fileKind, classId }
+// Vincula y proyecta: marca el proyector como "live" y abre una sesión. Si el
+// material tiene un archivo real (fileUrl), el proyector lo muestra en
+// pantalla completa — no solo el nombre.
 // Por seguridad, solo se puede proyectar al proyector que es el SALÓN ACTUAL
 // del profesor de esa clase (ver PUT /auth/salon-actual) — así ningún
 // profesor o estudiante puede mandar contenido al salón de otra clase.
 router.post('/:id/project', async (req, res) => {
-  const { fileName, classId } = req.body || {};
+  const { fileName, fileUrl, fileKind, classId } = req.body || {};
   if (!fileName) return res.status(400).json({ error: 'Falta el archivo a proyectar' });
   if (!classId) return res.status(400).json({ error: 'Falta la clase desde la que proyectas' });
   const projector = await prisma.projector.findUnique({ where: { id: req.params.id } });
@@ -58,7 +60,9 @@ router.post('/:id/project', async (req, res) => {
   }
 
   await prisma.projectionSession.updateMany({ where: { projectorId: projector.id, endedAt: null }, data: { endedAt: new Date() } });
-  const session = await prisma.projectionSession.create({ data: { projectorId: projector.id, fileName, startedBy: req.user.name } });
+  const session = await prisma.projectionSession.create({
+    data: { projectorId: projector.id, fileName, fileUrl: fileUrl || null, fileKind: fileKind || null, startedBy: req.user.name },
+  });
   await prisma.projector.update({ where: { id: projector.id }, data: { status: 'live', activity: `Proyectando: ${fileName}` } });
   res.status(201).json({ ok: true, session });
 });

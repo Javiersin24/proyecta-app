@@ -26,7 +26,7 @@ export default function ProjectAction({ cls, material, compact = false, onLinked
 
   const doProject = async (p) => {
     setBusy(true); setError('');
-    try { await start(p, material.name, cls.id); setLinkOpen(false); }
+    try { await start(p, material, cls.id); setLinkOpen(false); }
     catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
@@ -131,7 +131,7 @@ export function useQuickProject(cls, onLinked) {
 
   const projectNow = async (p, material) => {
     setBusy(true); setNotice('');
-    try { await start(p, material.name, cls.id); }
+    try { await start(p, material, cls.id); }
     catch (e) { setNotice(e.message); }
     finally { setBusy(false); }
   };
