@@ -1,12 +1,17 @@
 // Módulo del PROFESOR: sus clases (salones), temas, materiales, tareas,
 // publicaciones en el feed, y calificación de entregas.
 import { Router } from 'express';
+import multer from 'multer';
+import * as XLSX from 'xlsx';
 import { prisma, toJSON, parseJSON } from '../db.js';
 import { authRequired, requireRole } from '../auth.js';
 import { serializeClass, serializeTask, CLASS_INCLUDE } from '../serializers.js';
 
 const router = Router();
 router.use(authRequired, requireRole('teacher'));
+
+// El Excel a importar se procesa en memoria (no se guarda en disco).
+const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // Verifica que la clase pertenezca al profesor autenticado.
 async function ownClass(req, res, next) {
@@ -213,6 +218,79 @@ router.put('/classes/:classId/gradebook', ownClass, async (req, res) => {
   if (!gb.cats || !gb.rows || !gb.grades) return res.status(400).json({ error: 'Formato de libro de notas inválido' });
   await prisma.class.update({ where: { id: req.params.classId }, data: { gradebook: toJSON(gb) } });
   res.json({ ok: true });
+});
+
+// ── Importar / exportar el libro de notas en Excel ──────────────────────────
+
+// GET /api/teacher/classes/:classId/gradebook/export  → .xlsx del libro actual,
+// que también sirve de PLANTILLA (trae los estudiantes y columnas de hoy; el
+// profesor solo llena/edita notas y lo vuelve a subir). Si está vacío, entrega
+// una plantilla de ejemplo.
+router.get('/classes/:classId/gradebook/export', ownClass, async (req, res) => {
+  const gb = parseJSON(req.class.gradebook, null);
+  const cols = [];
+  if (gb?.cats) gb.cats.forEach((cat) => cat.cols.forEach((col) => cols.push({ id: col.id, header: `${cat.name} · ${col.label}` })));
+
+  let aoa;
+  if (gb?.rows?.length && cols.length) {
+    aoa = [['Estudiante', ...cols.map((c) => c.header)]];
+    gb.rows.forEach((r) => aoa.push([r.name, ...cols.map((c) => { const v = gb.grades[`${r.id}::${c.id}`]; return v == null || v === '' ? '' : v; })]));
+  } else {
+    // Plantilla de ejemplo cuando aún no hay libro.
+    aoa = [
+      ['Estudiante', 'Taller 1', 'Taller 2', 'Quiz 1', 'Examen'],
+      ['María Fernanda Ríos', 4.5, 4.0, 3.8, 4.2],
+      ['Carlos Andrés Mora', 3.2, 3.5, 2.9, 3.1],
+    ];
+  }
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = aoa[0].map((_, i) => ({ wch: i === 0 ? 26 : 14 }));
+  XLSX.utils.book_append_sheet(wb, ws, 'Notas');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const safe = (req.class.name || 'clase').replace(/[^\w\-]+/g, '_').slice(0, 40);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="notas_${safe}.xlsx"`);
+  res.send(buf);
+});
+
+// POST /api/teacher/classes/:classId/gradebook/import  (multipart, campo "file")
+// Parsea el Excel/CSV y devuelve una VISTA PREVIA (no guarda nada). El frontend
+// la combina con el libro existente y guarda con el PUT normal.
+router.post('/classes/:classId/gradebook/import', ownClass, (req, res) => {
+  memUpload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'El archivo supera el límite de 5 MB' : 'No se pudo leer el archivo' });
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+    let wb;
+    try { wb = XLSX.read(req.file.buffer, { type: 'buffer' }); } catch { return res.status(400).json({ error: 'No pude leer el archivo. Asegúrate de que sea un Excel (.xlsx) o CSV válido.' }); }
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if (!sheet) return res.status(400).json({ error: 'El archivo no tiene ninguna hoja con datos.' });
+    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
+    if (aoa.length < 2) return res.status(400).json({ error: 'Se espera una fila de encabezados y al menos un estudiante.' });
+
+    const header = (aoa[0] || []).map((h) => String(h).trim());
+    const columns = header.slice(1).map((h) => h.trim()).filter(Boolean);
+    if (!columns.length) return res.status(400).json({ error: 'La primera fila debe tener: "Estudiante" y luego el nombre de cada evaluación.' });
+
+    const students = [];
+    let maxVal = 0;
+    for (let i = 1; i < aoa.length; i++) {
+      const row = aoa[i] || [];
+      const name = String(row[0] ?? '').trim();
+      if (!name) continue;
+      const grades = {};
+      columns.forEach((label, ci) => {
+        const raw = row[ci + 1];
+        if (raw === '' || raw === undefined || raw === null) return;
+        const num = parseFloat(String(raw).replace(',', '.'));
+        if (Number.isFinite(num)) { grades[label] = String(num); if (num > maxVal) maxVal = num; }
+      });
+      students.push({ name, grades });
+    }
+    if (!students.length) return res.status(400).json({ error: 'No encontré nombres de estudiantes en la primera columna.' });
+
+    res.json({ preview: { columns, students, scaleWarning: maxVal > 5 } });
+  });
 });
 
 // ── Inteligencia Académica (Premium) ────────────────────────────────────────

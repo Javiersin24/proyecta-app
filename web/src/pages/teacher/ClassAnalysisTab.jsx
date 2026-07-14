@@ -9,7 +9,7 @@ import Icon from '../../ui/Icon.jsx';
 import { GB_MAX, GB_PASS, gbFmt } from '../../lib/gradebook.js';
 import { analyzeClass, riCategoryTrend, generateClassRecomendaciones, RISK_META, allClassInsights } from '../../lib/intelligence.js';
 import { InsightStatGrid, TONE_META, toneFor, RiskBadge, RecCard, StudentFichaModal, ReportModal, adminBtnGhost } from './intelligenceParts.jsx';
-import { InsightCard } from './copilotParts.jsx';
+import { InsightGrid } from './copilotParts.jsx';
 
 export default function ClassAnalysisTab({ classId }) {
   const { user } = useAuth();
@@ -94,9 +94,7 @@ export default function ClassAnalysisTab({ classId }) {
       {topInsights.length > 0 && (
         <>
           <SectionHeader>Explicaciones inteligentes</SectionHeader>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {topInsights.map((ins) => <InsightCard key={ins.id} insight={ins} />)}
-          </div>
+          <InsightGrid insights={topInsights} />
         </>
       )}
 

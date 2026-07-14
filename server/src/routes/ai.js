@@ -1,20 +1,18 @@
 // Asistente IA (Inteligencia Académica Premium). El frontend arma el contexto
 // (system) con los datos reales de las clases del profesor y manda la
-// conversación; aquí se reenvía a Qwen 2.5 7B alojado en DeepInfra (API
-// compatible con OpenAI) usando la clave del servidor. La clave NUNCA se
-// expone al cliente.
+// conversación; aquí se reenvía a Claude (Anthropic) usando la clave del
+// servidor. La clave NUNCA se expone al cliente.
 import { Router } from 'express';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { authRequired, requireRole } from '../auth.js';
 
 const router = Router();
 router.use(authRequired, requireRole('teacher'));
 
-// Modelo configurable vía .env; por defecto Qwen 2.5 7B en DeepInfra.
-const MODEL = process.env.AI_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
-const client = process.env.DEEPINFRA_API_KEY
-  ? new OpenAI({ apiKey: process.env.DEEPINFRA_API_KEY, baseURL: 'https://api.deepinfra.com/v1/openai' })
-  : null;
+// Modelo configurable vía .env; por defecto Claude Haiku 4.5 (rápido y con
+// mejor razonamiento pedagógico que un modelo abierto de 7B).
+const MODEL = process.env.AI_MODEL || 'claude-haiku-4-5';
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
 // Límite de uso en memoria por profesor: 40 mensajes por hora, para acotar el
 // costo si alguien abusa del chat. Se reinicia al reiniciar el servidor.
@@ -29,9 +27,9 @@ function rateLimited(userId) {
   arr.push(now); hits.set(userId, arr); return false;
 }
 
-// Qwen a veces antepone su razonamiento interno entre <think>...</think>
-// antes de la respuesta final. Lo quitamos: el profesor solo debe ver la
-// respuesta, nunca el "pensamiento" del modelo.
+// Algunos modelos anteponen su razonamiento interno entre <think>...</think>
+// antes de la respuesta final. Lo quitamos por si acaso: el profesor solo
+// debe ver la respuesta, nunca el "pensamiento" del modelo.
 function stripThinking(text) {
   if (!text) return '';
   let out = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
@@ -42,7 +40,7 @@ function stripThinking(text) {
 // POST /api/ai/assistant  { system, messages:[{role,content}] } → { reply }
 router.post('/assistant', async (req, res) => {
   if (!req.user.premium) return res.status(403).json({ error: 'Función Premium. Suscríbete a Inteligencia Académica.', code: 'PREMIUM_REQUIRED' });
-  if (!client) return res.status(503).json({ error: 'El asistente IA no está configurado en el servidor. Falta DEEPINFRA_API_KEY.' });
+  if (!client) return res.status(503).json({ error: 'El asistente IA no está configurado en el servidor. Falta ANTHROPIC_API_KEY.' });
   if (rateLimited(req.user.id)) return res.status(429).json({ error: 'Alcanzaste el límite de preguntas por ahora. Intenta de nuevo en un rato.' });
 
   const { system, messages } = req.body || {};
@@ -59,12 +57,14 @@ router.post('/assistant', async (req, res) => {
   }
 
   try {
-    const resp = await client.chat.completions.create({
+    const resp = await client.messages.create({
       model: MODEL,
-      max_tokens: 1200, // deja espacio de sobra: parte se consume en el razonamiento interno que luego recortamos
-      messages: [{ role: 'system', content: String(system).slice(0, 12000) }, ...clean],
+      max_tokens: 1000,
+      system: String(system).slice(0, 12000),
+      messages: clean,
     });
-    const reply = stripThinking(resp.choices?.[0]?.message?.content || '');
+    const raw = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    const reply = stripThinking(raw);
     res.json({ reply: reply || 'No obtuve respuesta. Intenta reformular la pregunta.' });
   } catch (e) {
     console.error('AI assistant error:', e?.message || e);

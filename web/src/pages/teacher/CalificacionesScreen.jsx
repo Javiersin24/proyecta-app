@@ -1,10 +1,56 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { get, put } from '../../lib/api.js';
+import { get, put, postFile, fetchBlob } from '../../lib/api.js';
 import { TopBar, Avatar, Chip, EmptyState } from '../../ui/kit.jsx';
 import { GB_MAX, GB_PASS, gbFmt, gbColor, gbId, buildDefaultGradebook } from '../../lib/gradebook.js';
 import Icon from '../../ui/Icon.jsx';
 
 const PALETTE = ['var(--indigo-500)', 'var(--coral-500)', '#0EA5A0', '#8B5CF6', '#D99400'];
+
+// Combina una vista previa importada con el libro de notas actual, SIN duplicar:
+// empareja columnas por su nombre (o "Categoría · Columna") y estudiantes por su
+// nombre. Lo nuevo se agrega; lo existente se actualiza. Las columnas que no
+// existían caen en una categoría "Importadas".
+function mergeImport(gb, preview) {
+  const norm = (s) => String(s).trim().toLowerCase();
+  const next = { cats: gb.cats.map((c) => ({ ...c, cols: [...c.cols] })), rows: [...gb.rows], grades: { ...gb.grades } };
+
+  const colByKey = {};
+  next.cats.forEach((cat) => cat.cols.forEach((col) => {
+    colByKey[norm(col.label)] = col.id;
+    colByKey[norm(`${cat.name} · ${col.label}`)] = col.id;
+  }));
+  let importCat = null;
+  const ensureImportCat = () => {
+    if (!importCat) { importCat = { id: gbId('cat'), name: 'Importadas', cols: [] }; next.cats.push(importCat); }
+    return importCat;
+  };
+  const resolveCol = (label) => {
+    if (colByKey[norm(label)]) return colByKey[norm(label)];
+    const after = label.includes('·') ? label.split('·').pop().trim() : label;
+    if (colByKey[norm(after)]) return colByKey[norm(after)];
+    const cat = ensureImportCat();
+    const id = gbId('c');
+    cat.cols.push({ id, label: after });
+    colByKey[norm(after)] = id;
+    return id;
+  };
+  const colIds = preview.columns.map(resolveCol);
+
+  const rowByName = {};
+  next.rows.forEach((r) => { rowByName[norm(r.name)] = r.id; });
+  let added = 0, updated = 0;
+  preview.students.forEach((st) => {
+    let rid = rowByName[norm(st.name)];
+    if (!rid) { rid = gbId('r'); next.rows.push({ id: rid, name: st.name }); rowByName[norm(st.name)] = rid; added++; }
+    else updated++;
+    preview.columns.forEach((label, ci) => {
+      const v = st.grades[label];
+      if (v == null || v === '') return;
+      next.grades[`${rid}::${colIds[ci]}`] = String(v);
+    });
+  });
+  return { gb: next, added, updated };
+}
 
 export default function TeacherCalificacionesScreen() {
   const [classes, setClasses] = useState(null);
@@ -57,6 +103,10 @@ function Gradebook({ classId, roster }) {
   const [saved, setSaved] = useState(true);
   const [newStudent, setNewStudent] = useState('');
   const [confirmDel, setConfirmDel] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importMsg, setImportMsg] = useState('');
+  const fileRef = useRef(null);
   const saveTimer = useRef(null);
 
   useEffect(() => {
@@ -96,6 +146,36 @@ function Gradebook({ classId, roster }) {
   const delRow = (rowId) => setGb((p) => ({ ...p, rows: p.rows.filter((r) => r.id !== rowId) }));
   const addRow = () => { const n = newStudent.trim(); if (!n) return; setGb((p) => ({ ...p, rows: [...p.rows, { id: gbId('r'), name: n }] })); setNewStudent(''); };
 
+  // ── Importar / exportar Excel ──────────────────────────────────────────────
+  const downloadTemplate = async () => {
+    setImportMsg('');
+    try {
+      const blob = await fetchBlob(`/teacher/classes/${classId}/gradebook/export`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'notas.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch { setImportMsg('No se pudo descargar la plantilla.'); }
+  };
+  const onPickFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportBusy(true); setImportMsg('');
+    try {
+      const { preview: pv } = await postFile(`/teacher/classes/${classId}/gradebook/import`, file);
+      setPreview(pv);
+    } catch (err) { setImportMsg(err.message || 'No se pudo leer el archivo.'); }
+    finally { setImportBusy(false); }
+  };
+  const confirmImport = () => {
+    const { gb: merged, added, updated } = mergeImport(gb, preview);
+    setGb(merged);
+    setImportMsg(`Importado: ${added} estudiante(s) nuevo(s), ${updated} actualizado(s).`);
+    setPreview(null);
+  };
+
   const th = { padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--fg-2)', borderBottom: '1px solid var(--ink-200)', background: 'var(--paper-50)', whiteSpace: 'nowrap' };
   const stickyName = { position: 'sticky', left: 0, zIndex: 3, background: 'var(--white)', textAlign: 'left', minWidth: 150, boxShadow: '2px 0 0 var(--ink-200)' };
   const stickyHead = { ...stickyName, background: 'var(--paper-50)', zIndex: 4 };
@@ -107,6 +187,37 @@ function Gradebook({ classId, roster }) {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '4px 14px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {preview && (
+        <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,20,32,0.5)', display: 'grid', placeItems: 'center', padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '86vh', overflowY: 'auto', background: 'var(--white)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', padding: '22px 22px 20px' }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>Vista previa de importación</div>
+            <div style={{ fontSize: 13, color: 'var(--fg-2)', marginTop: 4, lineHeight: 1.5 }}>
+              Se importarán <b>{preview.students.length}</b> estudiante{preview.students.length !== 1 ? 's' : ''} y <b>{preview.columns.length}</b> columna{preview.columns.length !== 1 ? 's' : ''} de notas. Los estudiantes que ya existan (por nombre) se actualizan; los nuevos se agregan.
+            </div>
+            {preview.scaleWarning && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12, background: '#FEF3C7', color: '#92600A', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, lineHeight: 1.45 }}>
+                <Icon name="alertTriangle" size={16} /> Detecté notas mayores a 5. Este libro usa escala <b>0–5.0</b>; revisa que las notas estén en esa escala antes de confirmar.
+              </div>
+            )}
+            <div style={{ marginTop: 14, border: '1px solid var(--ink-200)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', background: 'var(--paper-50)', fontSize: 11, fontWeight: 800, color: 'var(--fg-2)', padding: '8px 12px', gap: 8 }}>
+                <span style={{ flex: 1 }}>Estudiante</span><span>{preview.columns.slice(0, 3).join(' · ')}{preview.columns.length > 3 ? '…' : ''}</span>
+              </div>
+              {preview.students.slice(0, 6).map((s, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 12px', fontSize: 12.5, borderTop: '1px solid var(--ink-100)' }}>
+                  <span style={{ flex: 1, fontWeight: 600 }}>{s.name}</span>
+                  <span style={{ color: 'var(--fg-3)' }}>{preview.columns.slice(0, 3).map((c) => s.grades[c] ?? '–').join(' · ')}</span>
+                </div>
+              ))}
+              {preview.students.length > 6 && <div style={{ padding: '8px 12px', fontSize: 11.5, color: 'var(--fg-3)', borderTop: '1px solid var(--ink-100)' }}>y {preview.students.length - 6} más…</div>}
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button onClick={() => setPreview(null)} style={{ flex: 1, height: 46, borderRadius: 12, border: '1px solid var(--ink-200)', background: 'var(--white)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={confirmImport} style={{ flex: 1, height: 46, borderRadius: 12, border: 0, background: 'var(--indigo-600)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Confirmar importación</button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmDel && (
         <div onClick={() => setConfirmDel(null)} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,20,32,0.5)', display: 'grid', placeItems: 'center', padding: 20 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400, background: 'var(--white)', borderRadius: 20, overflow: 'hidden', boxShadow: 'var(--shadow-lg)' }}>
@@ -122,12 +233,20 @@ function Gradebook({ classId, roster }) {
           </div>
         </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 140, fontSize: 12.5, color: 'var(--fg-3)' }}>{gb.rows.length} estudiantes · escala 0–5.0 · aprueba con {GB_PASS.toFixed(1)}</div>
+      <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onPickFile} style={{ display: 'none' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 120, fontSize: 12.5, color: 'var(--fg-3)' }}>{gb.rows.length} estudiantes · escala 0–5.0 · aprueba con {GB_PASS.toFixed(1)}</div>
+        <button onClick={downloadTemplate} title="Descarga el libro actual como Excel (sirve de plantilla)" style={{ height: 38, padding: '0 12px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid var(--ink-200)', background: 'var(--white)', color: 'var(--fg-2)' }}>
+          <Icon name="download" size={15} /> Plantilla
+        </button>
+        <button onClick={() => fileRef.current?.click()} disabled={importBusy} style={{ height: 38, padding: '0 12px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid var(--ink-200)', background: 'var(--white)', color: 'var(--fg-2)' }}>
+          <Icon name="upload" size={15} /> {importBusy ? 'Leyendo…' : 'Importar Excel'}
+        </button>
         <button onClick={() => setEdit((e) => !e)} style={{ height: 38, padding: '0 14px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 7, border: edit ? '1px solid transparent' : '1px solid var(--ink-200)', background: edit ? 'var(--indigo-600)' : 'var(--white)', color: edit ? '#fff' : 'var(--fg-1)' }}>
           <Icon name={edit ? 'check' : 'edit'} size={16} /> {edit ? 'Listo' : 'Editar tabla'}
         </button>
       </div>
+      {importMsg && <div style={{ fontSize: 12.5, color: importMsg.startsWith('Importado') ? '#1a6b47' : 'var(--danger-500)', fontWeight: 600, marginTop: -4 }}>{importMsg}</div>}
 
       {edit && <button onClick={addCat} style={{ height: 34, padding: '0 12px', borderRadius: 9, cursor: 'pointer', fontWeight: 700, fontSize: 12.5, border: '1px dashed var(--indigo-500)', background: 'var(--indigo-50)', color: 'var(--indigo-700)', display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content' }}><Icon name="plus" size={15} /> Categoría</button>}
 

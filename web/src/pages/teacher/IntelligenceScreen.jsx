@@ -8,12 +8,12 @@ import { useAuth } from '../../lib/AuthContext.jsx';
 import { TopBar, SectionHeader, Chip, EmptyState, Avatar, IconButton } from '../../ui/kit.jsx';
 import Icon from '../../ui/Icon.jsx';
 import { GB_MAX, GB_PASS, gbFmt } from '../../lib/gradebook.js';
-import { analyzeTeacherClasses, generateRecomendaciones, generateTendencias, RISK_META, allClassInsights, detectOpportunities } from '../../lib/intelligence.js';
+import { analyzeTeacherClasses, generateRecomendaciones, generateTendencias, RISK_META, allClassInsights } from '../../lib/intelligence.js';
 import {
   InsightStatGrid, TONE_META, toneFor, RiskBadge, RecCard, CompareCard,
   StudentFichaModal, ReportModal, AIAssistantPanel, adminBtnGhost,
 } from './intelligenceParts.jsx';
-import { InsightCard, ImpactSimulatorPanel, OpportunityCard } from './copilotParts.jsx';
+import { InsightGrid, ImpactSimulatorPanel } from './copilotParts.jsx';
 
 // ── Pantalla de actualización a Premium (profesor sin acceso) ────────────────
 function PremiumUpsell() {
@@ -117,8 +117,7 @@ export default function IntelligenceScreen() {
   // Explicaciones inteligentes (todas las reglas del motor) + resumen proactivo.
   const insights = [];
   agg.analyses.forEach((a) => allClassInsights(a).forEach((i) => insights.push(i)));
-  const topInsights = insights.slice(0, 6);
-  const opportunities = detectOpportunities(agg);
+  const topInsights = insights.slice(0, 8);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -148,21 +147,10 @@ export default function IntelligenceScreen() {
           <Icon name="chevron" size={18} color="var(--fg-3)" />
         </button>
 
-        {opportunities.length > 0 && (
-          <>
-            <SectionHeader>{`Hoy detecté ${opportunities.length} oportunidad${opportunities.length !== 1 ? 'es' : ''} de mejora`}</SectionHeader>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {opportunities.map((op) => <OpportunityCard key={op.id} op={op} />)}
-            </div>
-          </>
-        )}
-
         {topInsights.length > 0 && (
           <>
-            <SectionHeader>Explicaciones inteligentes</SectionHeader>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {topInsights.map((ins) => <InsightCard key={ins.id} insight={ins} />)}
-            </div>
+            <SectionHeader>{`Hoy detecté ${topInsights.length} hallazgo${topInsights.length !== 1 ? 's' : ''}`}</SectionHeader>
+            <InsightGrid insights={topInsights} />
           </>
         )}
 

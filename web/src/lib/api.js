@@ -40,6 +40,30 @@ export const patch = (path, body) => api(path, { method: 'PATCH', body });
 export const put = (path, body) => api(path, { method: 'PUT', body });
 export const del = (path) => api(path, { method: 'DELETE' });
 
+// Sube un archivo (multipart) a un endpoint arbitrario y devuelve su JSON.
+export async function postFile(path, file, field = 'file') {
+  const fd = new FormData();
+  fd.append(field, file);
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+    body: fd,
+  });
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+  const data = isJson ? await res.json().catch(() => ({})) : null;
+  if (!res.ok) throw new ApiError(data?.error || `Error ${res.status}`, res.status);
+  return data;
+}
+
+// Descarga un archivo del backend (con autenticación) como Blob.
+export async function fetchBlob(path) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+  });
+  if (!res.ok) throw new ApiError(`Error ${res.status}`, res.status);
+  return res.blob();
+}
+
 // Sube un archivo real (multipart) y devuelve { name, kind, url, sizeKB }.
 export async function uploadFile(file) {
   const fd = new FormData();

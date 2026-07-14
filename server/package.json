@@ -15,6 +15,7 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -22,7 +23,7 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
-    "openai": "^4.104.0"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "prisma": "^5.22.0"

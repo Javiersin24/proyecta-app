@@ -16,6 +16,59 @@ export const StatusBar = () => (
   <div style={{ height: 24 }} />
 );
 
+// Render "ligero" de Markdown para respuestas de IA: negrita, listas con - y
+// numeradas, párrafos. No usa dangerouslySetInnerHTML — construye elementos
+// React directamente, así que es seguro y no depende de una librería externa.
+function parseInline(text, keyBase) {
+  const parts = [];
+  const re = /\*\*(.+?)\*\*/g;
+  let last = 0, m, i = 0;
+  while ((m = re.exec(text))) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(<strong key={`${keyBase}-${i++}`}>{m[1]}</strong>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+const isBullet = (l) => /^\s*[-•]\s+/.test(l);
+const isNumbered = (l) => /^\s*\d+[.)]\s+/.test(l);
+
+export const MarkdownLite = ({ text, style }) => {
+  if (!text) return null;
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (isBullet(line)) {
+      const items = [];
+      while (i < lines.length && isBullet(lines[i])) { items.push(lines[i].replace(/^\s*[-•]\s+/, '')); i++; }
+      blocks.push({ type: 'ul', items });
+    } else if (isNumbered(line)) {
+      const items = [];
+      while (i < lines.length && isNumbered(lines[i])) { items.push(lines[i].replace(/^\s*\d+[.)]\s+/, '')); i++; }
+      blocks.push({ type: 'ol', items });
+    } else if (line.trim() === '') {
+      i++;
+    } else {
+      const para = [line]; i++;
+      while (i < lines.length && lines[i].trim() !== '' && !isBullet(lines[i]) && !isNumbered(lines[i])) { para.push(lines[i]); i++; }
+      blocks.push({ type: 'p', text: para.join(' ') });
+    }
+  }
+  return (
+    <div style={style}>
+      {blocks.map((b, bi) => {
+        if (b.type === 'ul') return <ul key={bi} style={{ margin: '4px 0', paddingLeft: 18 }}>{b.items.map((it, ii) => <li key={ii} style={{ marginBottom: 3 }}>{parseInline(it, `${bi}-${ii}`)}</li>)}</ul>;
+        if (b.type === 'ol') return <ol key={bi} style={{ margin: '4px 0', paddingLeft: 18 }}>{b.items.map((it, ii) => <li key={ii} style={{ marginBottom: 3 }}>{parseInline(it, `${bi}-${ii}`)}</li>)}</ol>;
+        return <p key={bi} style={{ margin: bi === 0 ? '0 0 6px' : '6px 0' }}>{parseInline(b.text, `${bi}`)}</p>;
+      })}
+    </div>
+  );
+};
+
 export const TopBar = ({ title, subtitle, onBack, trailing, tinted, color, transparent }) => (
   <div style={{
     height: 'var(--header-h)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10,

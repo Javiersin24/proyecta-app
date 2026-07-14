@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { post } from '../../lib/api.js';
 import { useAuth } from '../../lib/AuthContext.jsx';
-import { IconButton } from '../../ui/kit.jsx';
+import { IconButton, MarkdownLite } from '../../ui/kit.jsx';
 import { buildImpactBounds } from '../../lib/intelligence.js';
 import { TONE_META, adminBtnGhost } from './intelligenceParts.jsx';
 import Icon from '../../ui/Icon.jsx';
@@ -110,20 +110,40 @@ function buildDeepenSystem(insight, teacherName) {
     `Patrones: ${insight.patrones.join(' | ')}`,
     `Evidencia: ${insight.evidencia.map((e) => e.texto).join(' | ')}`,
     `Nivel de confianza calculado: ${insight.confianza.pct}% (${insight.confianza.label}).`,
-    `Tu tarea: en máximo 90 palabras, profundiza en la hipótesis y da un siguiente paso concreto y accionable para el profesor. Texto plano, SIN Markdown. Preséntalo como una hipótesis ("esto sugiere…", "podría deberse a…"), nunca como un hecho absoluto. No inventes porcentajes nuevos.`,
+    `Tu tarea: en máximo 90 palabras, profundiza en la hipótesis y da un siguiente paso concreto y accionable para el profesor. Evita lo obvio: aporta un ángulo, causa alternativa o técnica pedagógica específica que el profesor probablemente no había considerado, no una repetición genérica de la recomendación. Puedes usar **negrita** para resaltar lo clave y listas ("-" o "1.") si ayudan a organizar pasos. Sin encabezados ni tablas. Preséntalo como una hipótesis ("esto sugiere…", "podría deberse a…"), nunca como un hecho absoluto. No inventes porcentajes nuevos.`,
   ].join('\n');
 }
 
-// Tarjeta de Explicación Inteligente. Colapsada por defecto: solo la hipótesis,
-// la confianza y la acción principal. El detalle (patrones/evidencia/plan)
-// queda detrás de "Ver evidencia y plan completo" para no saturar la pantalla.
-export const InsightCard = ({ insight }) => {
+// Chip compacto de confianza (para los mosaicos).
+const confColor = (pct) => (pct >= 85 ? 'var(--success-500)' : pct >= 70 ? 'var(--indigo-500)' : pct >= 55 ? 'var(--warning-500)' : 'var(--danger-500)');
+
+// Mosaico compacto: poco texto. Al tocarlo se abre el detalle completo.
+export const InsightTile = ({ insight, onClick }) => {
+  const t = TONE_META[insight.tono] || TONE_META.neutral;
+  const mod = MODULO_META[insight.modulo] || MODULO_META.explicacion;
+  const c = insight.confianza;
+  return (
+    <button onClick={onClick} style={{ textAlign: 'left', cursor: 'pointer', background: 'var(--white)', border: '1px solid var(--border-subtle)', borderLeft: `4px solid ${t.icon}`, borderRadius: 14, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: 8, minHeight: 116 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 26, height: 26, borderRadius: 8, background: t.bg, display: 'grid', placeItems: 'center', flexShrink: 0 }}><Icon name={mod.icon} size={14} color={t.icon} /></div>
+        <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: t.fg, opacity: 0.9 }}>{mod.label}</span>
+      </div>
+      <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--fg-1)', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{insight.titulo}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
+        {c && <span style={{ fontSize: 11, fontWeight: 800, color: confColor(c.pct), background: 'var(--paper-100)', borderRadius: 999, padding: '2px 8px' }}>{c.pct}% confianza</span>}
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11.5, fontWeight: 700, color: 'var(--indigo-600)' }}>Ver<Icon name="chevron" size={12} color="var(--indigo-600)" /></span>
+      </div>
+    </button>
+  );
+};
+
+// Modal con el detalle completo de un insight (hipótesis, evidencia, plan…).
+export const InsightDetailModal = ({ insight, onClose }) => {
   const { user } = useAuth();
   const t = TONE_META[insight.tono] || TONE_META.neutral;
+  const mod = MODULO_META[insight.modulo] || MODULO_META.explicacion;
   const [deep, setDeep] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-  const principal = insight.acciones?.[0];
 
   const profundizar = async () => {
     if (loading) return;
@@ -139,88 +159,76 @@ export const InsightCard = ({ insight }) => {
     } finally { setLoading(false); }
   };
 
-  const mod = MODULO_META[insight.modulo] || MODULO_META.explicacion;
   return (
-    <div style={{ background: 'var(--white)', border: '1px solid var(--border-subtle)', borderRadius: 16, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, padding: '14px 16px', background: t.bg }}>
-        <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.7)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-          <Icon name={mod.icon} size={17} color={t.icon} />
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: t.fg, opacity: 0.85 }}>{mod.label}</div>
-          <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--fg-1)', marginTop: 1 }}>{insight.titulo}</div>
-        </div>
-      </div>
-
-      <div style={{ padding: '14px 16px 16px' }}>
-        <div style={{ fontSize: 13.5, color: 'var(--fg-1)', lineHeight: 1.5 }}>{insight.narrativa}</div>
-
-        <ConfidenceBar confianza={insight.confianza} />
-
-        {principal && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 14 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: (PRIO_META[principal.prioridad] || PRIO_META.Baja).bg, color: (PRIO_META[principal.prioridad] || PRIO_META.Baja).fg, flexShrink: 0, whiteSpace: 'nowrap' }}>{principal.prioridad}</span>
-            <span style={{ fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.45, fontWeight: 600 }}>{principal.texto}</span>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 78, background: 'rgba(15,20,32,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 540, maxHeight: '92vh', overflowY: 'auto', background: 'var(--paper-50)', borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, padding: '16px 16px 14px', background: t.bg, position: 'sticky', top: 0 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.7)', display: 'grid', placeItems: 'center', flexShrink: 0 }}><Icon name={mod.icon} size={17} color={t.icon} /></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: t.fg, opacity: 0.85 }}>{mod.label}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--fg-1)', marginTop: 1 }}>{insight.titulo}</div>
           </div>
-        )}
+          <IconButton name="x" ariaLabel="Cerrar" onClick={onClose} />
+        </div>
 
-        {open && (
-          <>
-            {insight.patrones?.length > 0 && (
-              <>
-                <Label>Patrones detectados</Label>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--fg-2)', lineHeight: 1.6 }}>
-                  {insight.patrones.map((p, i) => <li key={i}>{p}</li>)}
-                </ul>
-              </>
-            )}
+        <div style={{ padding: '14px 18px 24px' }}>
+          <div style={{ fontSize: 13.5, color: 'var(--fg-1)', lineHeight: 1.5 }}>{insight.narrativa}</div>
+          <ConfidenceBar confianza={insight.confianza} />
 
-            <Label>Evidencia utilizada</Label>
-            <EvidenceList evidencia={insight.evidencia} />
+          {insight.patrones?.length > 0 && (
+            <>
+              <Label>Patrones detectados</Label>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--fg-2)', lineHeight: 1.6 }}>
+                {insight.patrones.map((p, i) => <li key={i}>{p}</li>)}
+              </ul>
+            </>
+          )}
 
-            {insight.acciones.length > 1 && (
-              <>
-                <Label>Otras acciones</Label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                  {insight.acciones.slice(1).map((ac, i) => {
-                    const pm = PRIO_META[ac.prioridad] || PRIO_META.Baja;
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-                        <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: pm.bg, color: pm.fg, flexShrink: 0, whiteSpace: 'nowrap' }}>{ac.prioridad}</span>
-                        <span style={{ fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.45 }}>{ac.texto}</span>
-                      </div>
-                    );
-                  })}
+          <Label>Evidencia utilizada</Label>
+          <EvidenceList evidencia={insight.evidencia} />
+
+          <Label>Acciones recomendadas</Label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {insight.acciones.map((ac, i) => {
+              const pm = PRIO_META[ac.prioridad] || PRIO_META.Baja;
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: pm.bg, color: pm.fg, flexShrink: 0, whiteSpace: 'nowrap' }}>{ac.prioridad}</span>
+                  <span style={{ fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.45 }}>{ac.texto}</span>
                 </div>
-              </>
-            )}
+              );
+            })}
+          </div>
 
-            {insight.plan && (
-              <>
-                <Label>Plan sugerido</Label>
-                <PlanChain plan={insight.plan} />
-              </>
-            )}
+          {insight.plan && (<><Label>Plan sugerido</Label><PlanChain plan={insight.plan} /></>)}
 
-            {deep && (
-              <div style={{ marginTop: 14, background: 'var(--indigo-50)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--indigo-700)', marginBottom: 5 }}>Copiloto · análisis ampliado</div>
-                {deep}
-              </div>
-            )}
+          {deep && (
+            <div style={{ marginTop: 14, background: 'var(--indigo-50)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--indigo-700)', marginBottom: 5 }}>Copiloto · análisis ampliado</div>
+              <MarkdownLite text={deep} />
+            </div>
+          )}
 
-            <button onClick={profundizar} disabled={loading} style={{ ...adminBtnGhost, marginTop: 14, width: '100%', justifyContent: 'center' }}>
-              <Icon name="sparkles" size={14} />{loading ? 'Analizando…' : 'Profundizar con el Copiloto'}
-            </button>
-          </>
-        )}
-
-        <button onClick={() => setOpen((o) => !o)} style={{ marginTop: 12, width: '100%', border: 0, background: 'transparent', color: 'var(--indigo-600)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '4px 0' }}>
-          {open ? 'Ocultar detalle' : 'Ver evidencia y plan completo'}
-          <Icon name="chevron" size={13} color="var(--indigo-600)" style={{ transform: open ? 'rotate(-90deg)' : 'rotate(90deg)' }} />
-        </button>
+          <button onClick={profundizar} disabled={loading} style={{ ...adminBtnGhost, marginTop: 16, width: '100%', justifyContent: 'center' }}>
+            <Icon name="sparkles" size={14} />{loading ? 'Analizando…' : 'Profundizar con el Copiloto'}
+          </button>
+        </div>
       </div>
     </div>
+  );
+};
+
+// Cuadrícula de mosaicos + modal de detalle. Es lo que usan las pantallas.
+export const InsightGrid = ({ insights }) => {
+  const [sel, setSel] = useState(null);
+  if (!insights.length) return null;
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
+        {insights.map((ins) => <InsightTile key={ins.id} insight={ins} onClick={() => setSel(ins)} />)}
+      </div>
+      {sel && <InsightDetailModal insight={sel} onClose={() => setSel(null)} />}
+    </>
   );
 };
 
@@ -229,7 +237,7 @@ export const InsightCard = ({ insight }) => {
 // estima DENTRO de los rangos que el motor entrega; se muestra como estimación.
 function buildSimulateSystem(agg, teacherName) {
   const lines = [];
-  lines.push(`Eres el Simulador de Impacto del Copiloto Pedagógico de Proyecta, para ${teacherName || 'el profesor'}. Responde en español, texto plano SIN Markdown, máximo ~90 palabras.`);
+  lines.push(`Eres el Simulador de Impacto del Copiloto Pedagógico de Proyecta, para ${teacherName || 'el profesor'}. Responde en español, máximo ~90 palabras. Puedes usar **negrita** para lo clave y listas ("-" o "1.") si ayudan a organizar. Sin encabezados ni tablas.`);
   lines.push('Datos reales de las clases del profesor (NO inventes cifras nuevas):');
   agg.analyses.forEach((a) => {
     lines.push(`\nClase "${a.cls.name}" — promedio ${gbFmtSafe(a.promedio)}/5, aprobados ${a.pctAprobados ?? '—'}%, en riesgo ${a.pctRiesgo}%, asistencia ${Math.round((a.attendanceAvg || 0) * 100)}%. Temas: ${a.categorias.map((c) => `${c.name} ${c.avgPct ?? '—'}%`).join(', ')}.`);
@@ -291,7 +299,9 @@ export const ImpactSimulatorPanel = ({ agg, onClose }) => {
         <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {messages.map((m, i) => (
             <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '86%' }}>
-              <div style={{ background: m.role === 'user' ? 'var(--indigo-500)' : 'var(--white)', color: m.role === 'user' ? '#fff' : 'var(--fg-1)', border: m.role === 'user' ? 'none' : '1px solid var(--border-subtle)', borderRadius: 16, padding: '10px 14px', fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{m.text}</div>
+              <div style={{ background: m.role === 'user' ? 'var(--indigo-500)' : 'var(--white)', color: m.role === 'user' ? '#fff' : 'var(--fg-1)', border: m.role === 'user' ? 'none' : '1px solid var(--border-subtle)', borderRadius: 16, padding: '10px 14px', fontSize: 13.5, lineHeight: 1.5 }}>
+                {m.role === 'user' ? m.text : <MarkdownLite text={m.text} />}
+              </div>
             </div>
           ))}
           {loading && <div style={{ alignSelf: 'flex-start', fontSize: 12.5, color: 'var(--fg-3)', padding: '4px 6px' }}>Estimando impacto…</div>}
