@@ -1,60 +1,37 @@
-// Cascarón responsive compartido por los 4 módulos: TabBar+TopBar en móvil,
-// SideNav+AccountBar en escritorio (misma regla que el prototipo, useIsWide).
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../lib/AuthContext.jsx';
-import { useLanguage } from '../lib/LanguageContext.jsx';
-import { useIsWide, TabBar, SideNav, AccountBar, IconButton } from './kit.jsx';
-import Icon from './Icon.jsx';
+export const Screen = ({ children, pad = 16 }) => (
+  <div style={{ height: '100%', overflowY: 'auto', padding: pad }}>{children}</div>
+);
 
-export default function AppLayout({ navItems: rawNavItems, brand = 'Proyecta', roleLabel, showLogoutTopBar = false }) {
-  const wide = useIsWide();
-  const nav = useNavigate();
-  const loc = useLocation();
-  const { user, logout } = useAuth();
-  const { t } = useLanguage();
-  const navItems = rawNavItems.map((it) => ({ ...it, label: t(it.label) }));
-
-  const activeId = navItems.find((it) => loc.pathname.startsWith(it.to))?.id;
-  const goTo = (id) => { const item = navItems.find((it) => it.id === id); if (item) nav(item.to); };
-
-  const doLogout = async () => { await logout(); nav('/login'); };
-
-  if (wide) {
-    return (
-      <div style={{ height: '100%', width: '100%', display: 'flex' }}>
-        <SideNav
-          items={navItems}
-          active={activeId}
-          onChange={goTo}
-          footer={<AccountBar name={user?.name || ''} subtitle={t(roleLabel)} onLogout={doLogout} />}
-        />
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ height: 56, borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', padding: '0 20px', flexShrink: 0, gap: 10 }}>
-            <div style={{ width: 26, height: 26, borderRadius: 8, background: 'var(--indigo-500)', display: 'grid', placeItems: 'center' }}>
-              <Icon name="cast" size={13} color="#fff" />
-            </div>
-            <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 800, fontSize: 15 }}>{brand}</span>
-          </div>
-          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            <Outlet />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+export const Sheet = ({ open, onClose, title, children }) => {
+  if (!open) return null;
   return (
-    <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-app)' }}>
-      {showLogoutTopBar && (
-        <div style={{ height: 'var(--header-h)', flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 16px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 800, fontSize: 15 }}>{brand}</span>
-          <div style={{ marginLeft: 'auto' }}><IconButton name="logout" onClick={doLogout} ariaLabel="Cerrar sesión" /></div>
-        </div>
-      )}
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <Outlet />
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--bg-overlay)' }} />
+      <div style={{
+        position: 'relative', width: '100%', maxWidth: 480, maxHeight: '86vh', overflowY: 'auto',
+        background: 'var(--bg-surface)', borderRadius: '20px 20px 0 0', padding: '18px 20px 28px',
+        boxShadow: 'var(--shadow-xl)',
+      }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--ink-200)', margin: '0 auto 16px' }} />
+        {title && <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 800, fontSize: 17, marginBottom: 14 }}>{title}</div>}
+        {children}
       </div>
-      <TabBar items={navItems} active={activeId} onChange={goTo} />
     </div>
   );
-}
+};
+
+export const Modal = ({ open, onClose, title, children, width = 460 }) => {
+  if (!open) return null;
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--bg-overlay)' }} />
+      <div style={{
+        position: 'relative', width: '100%', maxWidth: width, maxHeight: '86vh', overflowY: 'auto',
+        background: 'var(--bg-surface)', borderRadius: 18, padding: '20px 22px', boxShadow: 'var(--shadow-xl)',
+      }}>
+        {title && <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 800, fontSize: 17, marginBottom: 14 }}>{title}</div>}
+        {children}
+      </div>
+    </div>
+  );
+};

@@ -1,7 +1,7 @@
 // Centro de Inteligencia Académica — toda la analítica se calcula localmente
 // a partir de datos que YA existen (calificaciones, asistencia, tareas) que
 // llegan de GET /teacher/intelligence. No se inventan cifras.
-import { GB_MAX, GB_PASS, gbFmt, buildDefaultGradebook } from './gradebook.js';
+import { GB_MAX, GB_PASS, gbFmtIn, gbScaleOf, gbFinalFromCats, buildDefaultGradebook } from './gradebook.js';
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const diaDe = (iso) => { const d = new Date(iso + 'T00:00:00'); return DIAS[d.getDay()] || ''; };
@@ -16,16 +16,18 @@ function riGradebook(cls) {
   return cls.gradebook || buildDefaultGradebook(roster);
 }
 
-function riStudentCatAvg(gb, rowId, cat) {
+function riStudentCatAvg(gb, rowId, cat, scale = gbScaleOf(gb)) {
   const xs = cat.cols.map((c) => {
     const v = parseFloat(gb.grades[`${rowId}::${c.id}`]);
-    return Number.isFinite(v) ? Math.min(GB_MAX, Math.max(0, v)) : null;
+    return Number.isFinite(v) ? Math.min(scale.max, Math.max(0, v)) : null;
   });
   return riAvg(xs);
 }
 
-function riStudentFinalAvg(gb, rowId, cats) {
-  return riAvg(cats.map((cat) => riStudentCatAvg(gb, rowId, cat)));
+// Promedio final del estudiante: ponderado si la clase definió pesos por
+// categoría (ej. Parciales 40% / Talleres 30%), o simple si no.
+function riStudentFinalAvg(gb, rowId, cats, scale = gbScaleOf(gb)) {
+  return gbFinalFromCats(gb, cats.map((cat) => riStudentCatAvg(gb, rowId, cat, scale)));
 }
 
 // Asistencia por estudiante a partir del historial real + registro de hoy.
@@ -68,10 +70,10 @@ function riTasksByStudent(cls) {
 }
 
 // Probabilidad de aprobar (0-100): promedio + asistencia + entregas.
-function riRiskForStudent({ avg, attendanceRate, taskRate }) {
-  const promedioNorm = avg != null ? Math.min(1, avg / GB_MAX) : 0.6;
+function riRiskForStudent({ avg, attendanceRate, taskRate, scale = { max: GB_MAX, pass: GB_PASS } }) {
+  const promedioNorm = avg != null ? Math.min(1, avg / scale.max) : 0.6;
   let prob = Math.round(100 * (0.55 * promedioNorm + 0.25 * attendanceRate + 0.20 * taskRate));
-  if (avg != null && avg < GB_PASS) prob = Math.min(prob, 58);
+  if (avg != null && avg < scale.pass) prob = Math.min(prob, 58);
   prob = Math.max(2, Math.min(98, prob));
   const level = prob >= 80 ? 'bajo' : prob >= 60 ? 'medio' : 'alto';
   return { prob, level };
@@ -85,24 +87,25 @@ export const RISK_META = {
 
 export function analyzeClassStudents(cls) {
   const gb = riGradebook(cls);
+  const scale = gbScaleOf(gb);
   const attendance = riAttendanceByStudent(cls);
   const tasks = riTasksByStudent(cls);
   return gb.rows.map((row) => {
-    const catAvgs = gb.cats.map((cat) => ({ id: cat.id, name: cat.name, avg: riStudentCatAvg(gb, row.id, cat) }));
-    const avg = riStudentFinalAvg(gb, row.id, gb.cats);
+    const catAvgs = gb.cats.map((cat) => ({ id: cat.id, name: cat.name, peso: Number(cat.peso) || 0, avg: riStudentCatAvg(gb, row.id, cat, scale) }));
+    const avg = riStudentFinalAvg(gb, row.id, gb.cats, scale);
     const att = attendance[row.name] || { rate: 1, ausentes: 0, tarde: 0, total: 0 };
     const tk = tasks[row.name] || { total: 0, entregadas: 0, pendientes: 0, tardias: 0 };
     const taskRate = tk.total ? tk.entregadas / tk.total : 1;
-    const risk = riRiskForStudent({ avg, attendanceRate: att.rate, taskRate });
+    const risk = riRiskForStudent({ avg, attendanceRate: att.rate, taskRate, scale });
     const withAvg = catAvgs.filter((c) => c.avg != null);
     const fortaleza = withAvg.length ? withAvg.reduce((a, b) => (b.avg > a.avg ? b : a)) : null;
     const areaMejora = withAvg.length ? withAvg.reduce((a, b) => (b.avg < a.avg ? b : a)) : null;
     const motivos = [];
-    if (avg != null && avg < GB_PASS) motivos.push('Promedio por debajo de la nota mínima');
-    if (areaMejora && withAvg.length > 1 && areaMejora.avg < GB_PASS) motivos.push(`Bajo rendimiento en ${areaMejora.name}`);
+    if (avg != null && avg < scale.pass) motivos.push('Promedio por debajo de la nota mínima');
+    if (areaMejora && withAvg.length > 1 && areaMejora.avg < scale.pass) motivos.push(`Bajo rendimiento en ${areaMejora.name}`);
     if (att.ausentes >= 2) motivos.push(`${att.ausentes} ausencias recientes`);
     if (tk.pendientes > 0) motivos.push(`${tk.pendientes} tarea${tk.pendientes > 1 ? 's' : ''} sin entregar`);
-    return { id: row.id, name: row.name, avg, catAvgs, attendance: att, tasks: tk, risk, fortaleza, areaMejora, motivos };
+    return { id: row.id, name: row.name, avg, catAvgs, attendance: att, tasks: tk, risk, fortaleza, areaMejora, motivos, scale };
   });
 }
 
@@ -121,25 +124,27 @@ export function riCategoryTrend(cls) {
 }
 
 export function analyzeClass(cls) {
+  const gb = riGradebook(cls);
+  const scale = gbScaleOf(gb);
   const students = analyzeClassStudents(cls);
   const avgs = students.map((s) => s.avg).filter((x) => x != null);
   const promedio = riAvg(avgs);
-  const pctAprobados = avgs.length ? Math.round((100 * avgs.filter((a) => a >= GB_PASS).length) / avgs.length) : null;
+  const pctAprobados = avgs.length ? Math.round((100 * avgs.filter((a) => a >= scale.pass).length) / avgs.length) : null;
   const enRiesgo = students.filter((s) => s.risk.level === 'alto').length;
   const pctRiesgo = students.length ? Math.round((100 * enRiesgo) / students.length) : 0;
   const attendanceAvg = riAvg(students.map((s) => s.attendance.rate));
   const pendientesTotal = students.reduce((sum, s) => sum + s.tasks.pendientes, 0);
-  const gb = riGradebook(cls);
   const categorias = gb.cats.map((cat) => {
     const xs = students.map((s) => (s.catAvgs.find((c) => c.id === cat.id) || {}).avg).filter((x) => x != null);
-    const avgPct = xs.length ? Math.round((100 * riAvg(xs)) / GB_MAX) : null;
+    const avgPct = xs.length ? Math.round((100 * riAvg(xs)) / scale.max) : null;
     const status = avgPct == null ? 'Sin datos suficientes' : avgPct >= 85 ? 'Excelente desempeño' : avgPct >= 70 ? 'Desempeño aceptable' : 'Necesita refuerzo';
-    return { name: cat.name, avgPct, status };
+    return { name: cat.name, peso: Number(cat.peso) || 0, avgPct, status };
   });
-  return { cls, students, promedio, pctAprobados, pctRiesgo, attendanceAvg, pendientesTotal, categorias };
+  return { cls, students, promedio, pctAprobados, pctRiesgo, attendanceAvg, pendientesTotal, categorias, scale };
 }
 
 export function generateClassRecomendaciones(a, cls) {
+  const scale = a.scale || gbScaleOf(riGradebook(cls));
   const recs = [];
   const peorCat = [...a.categorias].filter((c) => c.avgPct != null).sort((x, y) => x.avgPct - y.avgPct)[0];
   if (peorCat && peorCat.avgPct < 70) {
@@ -152,8 +157,8 @@ export function generateClassRecomendaciones(a, cls) {
   const trend = riCategoryTrend(cls);
   if (trend != null && Math.abs(trend) >= 0.25) {
     recs.push(trend > 0
-      ? { icon: 'trendUp', color: '#1a6b47', bg: 'var(--success-100)', title: 'Mejora sostenida', body: `El desempeño subió ${((trend / GB_MAX) * 100).toFixed(0)}% entre las primeras y últimas notas. La estrategia reciente está funcionando.` }
-      : { icon: 'trendDown', color: '#B42318', bg: '#FEE2E2', title: 'Desempeño en caída', body: `El desempeño bajó ${Math.abs((trend / GB_MAX) * 100).toFixed(0)}% entre las primeras y últimas notas. Revisa la dificultad de las últimas evaluaciones.` });
+      ? { icon: 'trendUp', color: '#1a6b47', bg: 'var(--success-100)', title: 'Mejora sostenida', body: `El desempeño subió ${((trend / scale.max) * 100).toFixed(0)}% entre las primeras y últimas notas. La estrategia reciente está funcionando.` }
+      : { icon: 'trendDown', color: '#B42318', bg: '#FEE2E2', title: 'Desempeño en caída', body: `El desempeño bajó ${Math.abs((trend / scale.max) * 100).toFixed(0)}% entre las primeras y últimas notas. Revisa la dificultad de las últimas evaluaciones.` });
   }
   if (a.pendientesTotal > 0) {
     recs.push({ icon: 'clipboard', color: 'var(--indigo-600)', bg: 'var(--indigo-50)', title: 'Tareas por revisar', body: `Hay ${a.pendientesTotal} entrega${a.pendientesTotal > 1 ? 's' : ''} pendiente${a.pendientesTotal > 1 ? 's' : ''} en este grupo.` });
@@ -197,7 +202,7 @@ export function analyzeTeacherClasses(classes) {
   const promedioGeneral = riAvg(analyses.map((a) => a.promedio));
   const allStudents = analyses.flatMap((a) => a.students.map((s) => ({ ...s, className: a.cls.name, classId: a.cls.id })));
   const conAvg = allStudents.filter((s) => s.avg != null);
-  const pctAprobadosGeneral = conAvg.length ? Math.round((100 * conAvg.filter((s) => s.avg >= GB_PASS).length) / conAvg.length) : null;
+  const pctAprobadosGeneral = conAvg.length ? Math.round((100 * conAvg.filter((s) => s.avg >= (s.scale?.pass ?? GB_PASS)).length) / conAvg.length) : null;
   const pctRiesgoGeneral = allStudents.length ? Math.round((100 * allStudents.filter((s) => s.risk.level === 'alto').length) / allStudents.length) : 0;
   const asistenciaGeneral = riAvg(analyses.map((a) => a.attendanceAvg));
   const pendientesTotal = analyses.reduce((sum, a) => sum + a.pendientesTotal, 0);
@@ -303,6 +308,7 @@ export function detectClassInsights(a) {
   const nStudents = a.students.length;
   if (!nStudents) return out;
 
+  const scale = a.scale || { max: GB_MAX, pass: GB_PASS };
   const catsOrden = [...a.categorias].filter((c) => c.avgPct != null).sort((x, y) => x.avgPct - y.avgPct);
   const peorCat = catsOrden[0] || null;
   const attTrend = attendanceTrend(cls);
@@ -311,7 +317,7 @@ export function detectClassInsights(a) {
   // 1) Descenso de rendimiento
   if (trend != null && trend <= -0.15) {
     const dec = declineStats(cls);
-    const pctBaja = Math.round((Math.abs(trend) / GB_MAX) * 100);
+    const pctBaja = Math.round((Math.abs(trend) / scale.max) * 100);
     const patrones = [];
     if (attTrend && attTrend.delta <= -0.05) patrones.push(`La asistencia bajó de ${Math.round(attTrend.early * 100)}% a ${Math.round(attTrend.late * 100)}% en el mismo periodo`);
     else if (attTrend) patrones.push(`La asistencia se mantuvo estable (${Math.round(attTrend.late * 100)}%)`);
@@ -320,7 +326,7 @@ export function detectClassInsights(a) {
     if (dec.counted) patrones.push(`${dec.declined} de ${dec.counted} estudiantes bajaron su nota entre la primera y la última evaluación`);
 
     const evidencia = [
-      { ok: a.promedio != null, texto: `Promedio actual del grupo: ${gbFmt(a.promedio)}/5` },
+      { ok: a.promedio != null, texto: `Promedio actual del grupo: ${gbFmtIn(a.promedio, scale)}/${scale.max}` },
       { ok: true, texto: `Caída de ${pctBaja}% entre las primeras y las últimas notas` },
       { ok: a.attendanceAvg != null, texto: `Asistencia promedio: ${Math.round((a.attendanceAvg || 0) * 100)}%` },
     ];
@@ -398,6 +404,7 @@ export function detectClassInsights(a) {
 // Caso "presión en evaluaciones puntuales": asiste y entrega bien, pero baja
 // justo en quizzes/exámenes frente al trabajo continuo.
 export function detectStudentInsight(student) {
+  const scale = student.scale || { max: GB_MAX, pass: GB_PASS };
   const { puntualAvg, continuoAvg, nPuntual } = studentByEvalType(student);
   const att = student.attendance?.rate ?? 1;
   const taskRate = student.tasks?.total ? student.tasks.entregadas / student.tasks.total : 1;
@@ -406,17 +413,17 @@ export function detectStudentInsight(student) {
     return {
       id: `${student.id}-presion`, tono: 'warn', modulo: 'explicacion',
       titulo: `Posible causa del bajo desempeño de ${student.name.split(' ')[0]}`,
-      hallazgo: `${student.name.split(' ')[0]} rinde bien en el trabajo continuo (${gbFmt(continuoAvg)}) pero baja en evaluaciones puntuales (${gbFmt(puntualAvg)}).`,
+      hallazgo: `${student.name.split(' ')[0]} rinde bien en el trabajo continuo (${gbFmtIn(continuoAvg, scale)}) pero baja en evaluaciones puntuales (${gbFmtIn(puntualAvg, scale)}).`,
       narrativa: `${student.name.split(' ')[0]} entrega sus tareas (${Math.round(taskRate * 100)}%) y asiste de forma constante (${Math.round(att * 100)}%). Sin embargo, sus notas caen únicamente en las evaluaciones puntuales. Este patrón sugiere dificultades para gestionar la presión del examen más que una falta de comprensión del contenido.`,
       patrones: [
-        `Trabajo continuo: ${gbFmt(continuoAvg)} · Evaluaciones puntuales: ${gbFmt(puntualAvg)}`,
+        `Trabajo continuo: ${gbFmtIn(continuoAvg, scale)} · Evaluaciones puntuales: ${gbFmtIn(puntualAvg, scale)}`,
         `Asistencia ${Math.round(att * 100)}% y entregas ${Math.round(taskRate * 100)}%: descarta desconexión o falta de estudio`,
       ],
       evidencia: [
         { ok: true, texto: `Asistencia: ${Math.round(att * 100)}%` },
         { ok: true, texto: `Tareas entregadas: ${Math.round(taskRate * 100)}%` },
-        { ok: true, texto: `Promedio en trabajo continuo: ${gbFmt(continuoAvg)}` },
-        { ok: false, texto: `Promedio en evaluaciones puntuales: ${gbFmt(puntualAvg)}` },
+        { ok: true, texto: `Promedio en trabajo continuo: ${gbFmtIn(continuoAvg, scale)}` },
+        { ok: false, texto: `Promedio en evaluaciones puntuales: ${gbFmtIn(puntualAvg, scale)}` },
       ],
       confianza: mkConfidence({ volumen: Math.min(1, nPuntual / 3), magnitud: Math.min(1, gap / 2), consistencia: Math.min(1, (att + taskRate) / 2) }),
       acciones: [
@@ -454,15 +461,16 @@ export function buildImpactBounds(a, catName) {
 // es de los estudiantes: apunta al concepto o a la consigna.
 export function detectUniformFailure(cls) {
   const gb = riGradebook(cls);
+  const scale = gbScaleOf(gb);
   const nStudents = gb.rows.length;
   if (nStudents < 4) return null;
   let worst = null;
   gb.cats.forEach((cat) => cat.cols.forEach((col) => {
     const vals = gb.rows.map((r) => { const v = parseFloat(gb.grades[`${r.id}::${col.id}`]); return Number.isFinite(v) ? v : null; }).filter((v) => v != null);
     if (vals.length < Math.max(4, Math.ceil(nStudents * 0.6))) return;
-    const frac = vals.filter((v) => v < GB_PASS).length / vals.length;
+    const frac = vals.filter((v) => v < scale.pass).length / vals.length;
     const avg = riAvg(vals);
-    if (frac >= 0.7 && avg < GB_PASS && (!worst || frac > worst.frac)) worst = { cat: cat.name, col: col.label, frac, avg, n: vals.length };
+    if (frac >= 0.7 && avg < scale.pass && (!worst || frac > worst.frac)) worst = { cat: cat.name, col: col.label, frac, avg, n: vals.length };
   }));
   if (!worst) return null;
   const pct = Math.round(worst.frac * 100);
@@ -473,10 +481,10 @@ export function detectUniformFailure(cls) {
     narrativa: `Cuando casi todo el grupo falla exactamente lo mismo (${pct}% en ${worst.col}), el problema rara vez es de los estudiantes: suele apuntar a que ese concepto o la consigna de esa evaluación necesita reforzarse o reformularse. Conviene revisar cómo se presentó ${worst.col} antes de avanzar.`,
     patrones: [
       `${pct}% del grupo por debajo de la nota mínima en ${worst.col}`,
-      `Promedio de ${worst.col}: ${gbFmt(worst.avg)} sobre ${worst.n} estudiantes`,
+      `Promedio de ${worst.col}: ${gbFmtIn(worst.avg, scale)} sobre ${worst.n} estudiantes`,
     ],
     evidencia: [
-      { ok: false, texto: `${worst.col}: ${gbFmt(worst.avg)} de promedio` },
+      { ok: false, texto: `${worst.col}: ${gbFmtIn(worst.avg, scale)} de promedio` },
       { ok: false, texto: `${pct}% del grupo bajo la nota mínima` },
       { ok: true, texto: `Basado en ${worst.n} estudiantes evaluados` },
     ],
@@ -497,6 +505,7 @@ export function detectUniformFailure(cls) {
 // ── Regla: estudiante que mejora (refuerzo positivo) ─────────────────────────
 export function detectImprovement(cls) {
   const gb = riGradebook(cls);
+  const scale = gbScaleOf(gb);
   const cols = gb.cats.flatMap((c) => c.cols);
   if (cols.length < 3) return null;
   let best = null;
@@ -508,20 +517,20 @@ export function detectImprovement(cls) {
     const late = riAvg(withV.slice(half));
     if (early == null || late == null) return;
     const delta = late - early;
-    if (delta >= 0.6 && late >= GB_PASS && (!best || delta > best.delta)) best = { name: r.name, early, late, delta };
+    if (delta >= (scale.max / 8) && late >= scale.pass && (!best || delta > best.delta)) best = { name: r.name, early, late, delta };
   });
   if (!best) return null;
-  const pct = Math.round((best.delta / GB_MAX) * 100);
+  const pct = Math.round((best.delta / scale.max) * 100);
   const nombre = best.name.split(' ')[0];
   return {
     id: `${cls.id}-mejora-${best.name}`, tono: 'good', modulo: 'refuerzo',
     titulo: `${nombre} está mejorando`,
-    hallazgo: `${nombre} subió su desempeño ${pct}% (de ${gbFmt(best.early)} a ${gbFmt(best.late)}) en las últimas evaluaciones.`,
+    hallazgo: `${nombre} subió su desempeño ${pct}% (de ${gbFmtIn(best.early, scale)} a ${gbFmtIn(best.late, scale)}) en las últimas evaluaciones.`,
     narrativa: `El avance de ${nombre} es de los más claros del grupo. Reconocerlo en clase refuerza su motivación, y su forma de resolver puede servir de ejemplo para el resto.`,
-    patrones: [`De ${gbFmt(best.early)} a ${gbFmt(best.late)} entre las primeras y las últimas notas`],
+    patrones: [`De ${gbFmtIn(best.early, scale)} a ${gbFmtIn(best.late, scale)} entre las primeras y las últimas notas`],
     evidencia: [
-      { ok: true, texto: `Nota inicial: ${gbFmt(best.early)}` },
-      { ok: true, texto: `Nota reciente: ${gbFmt(best.late)}` },
+      { ok: true, texto: `Nota inicial: ${gbFmtIn(best.early, scale)}` },
+      { ok: true, texto: `Nota reciente: ${gbFmtIn(best.late, scale)}` },
       { ok: true, texto: `Mejora: +${pct}%` },
     ],
     confianza: mkConfidence({ volumen: 0.7, magnitud: Math.min(1, best.delta / 2), consistencia: 0.7 }),
@@ -537,6 +546,7 @@ export function detectImprovement(cls) {
 
 // ── Módulo predictivo: cuántos podrían reprobar el próximo examen ────────────
 export function predictiveAtRisk(a) {
+  const scale = a.scale || { max: GB_MAX, pass: GB_PASS };
   const enRiesgo = a.students.filter((s) => s.risk.level === 'alto');
   if (enRiesgo.length < 1) return null;
   const nombres = enRiesgo.slice(0, 4).map((s) => s.name.split(' ')[0]);
@@ -549,7 +559,7 @@ export function predictiveAtRisk(a) {
     patrones: enRiesgo.slice(0, 4).map((s) => `${s.name.split(' ')[0]}: ${s.risk.prob}% de probabilidad de aprobar`),
     evidencia: [
       { ok: false, texto: `${enRiesgo.length} estudiante(s) en riesgo alto` },
-      { ok: a.promedio != null, texto: `Promedio del grupo: ${gbFmt(a.promedio)}` },
+      { ok: a.promedio != null, texto: `Promedio del grupo: ${gbFmtIn(a.promedio, scale)}` },
       { ok: a.attendanceAvg != null, texto: `Asistencia: ${Math.round((a.attendanceAvg || 0) * 100)}%` },
     ],
     confianza: mkConfidence({ volumen: Math.min(1, a.students.length / 8), magnitud: Math.min(1, enRiesgo.length / Math.max(1, a.students.length)), consistencia: 0.6 }),

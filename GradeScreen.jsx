@@ -74,18 +74,24 @@ export default function IntelligenceScreen() {
 
   const isPremium = !!user?.premium;
 
+  // El servidor es la verdad sobre Premium: intentamos cargar siempre y, si
+  // responde 403 (Premium requerido), mostramos la oferta — nunca un error.
+  const [notPremium, setNotPremium] = useState(!isPremium);
   useEffect(() => {
-    if (!isPremium) return;
     let alive = true;
     get('/teacher/intelligence')
-      .then((d) => { if (alive) setClasses(d.classes || []); })
-      .catch((e) => { if (alive) setError(e.message || 'No se pudo cargar el análisis.'); });
+      .then((d) => { if (!alive) return; setClasses(d.classes || []); setNotPremium(false); setError(null); })
+      .catch((e) => {
+        if (!alive) return;
+        if (e.status === 403) setNotPremium(true);
+        else setError(e.message || 'No se pudo cargar el análisis.');
+      });
     return () => { alive = false; };
-  }, [isPremium]);
+  }, []);
 
   const agg = useMemo(() => (classes ? analyzeTeacherClasses(classes) : null), [classes]);
 
-  if (!isPremium) return <PremiumUpsell />;
+  if (notPremium) return <PremiumUpsell />;
 
   if (error) {
     return (

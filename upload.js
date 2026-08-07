@@ -1,58 +1,60 @@
-// Proyecta — servidor HTTP (API REST)
-// Cada módulo del producto es un router aislado y protegido por rol:
-//   /api/auth        → login, registro de matrícula, sesión
-//   /api/teacher     → módulo del profesor
-//   /api/student     → módulo del estudiante
-//   /api/admin       → módulo del admin de colegio (ERP)
-//   /api/superadmin  → módulo del súper-admin (plataforma)
-//   /api/matricula   → portal de matrícula (aspirantes)
-//   /api/projector   → emparejar y proyectar
-//   /api/chat        → chat 1:1 y grupal (profesor + estudiante)
-//   /api/events, /api/reminders → Organizador (eventos del colegio + recordatorios personales)
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
+// Límite de intentos en memoria, con ventana deslizante.
+//
+// Se usa para frenar la fuerza bruta contra el login y la enumeración de
+// códigos de proyector. Es en memoria a propósito: no añade dependencias ni
+// otro servicio que mantener. Su límite conocido es que se reinicia cuando se
+// reinicia el proceso y que no se comparte entre varias instancias — si algún
+// día Proyecta corre en más de un servidor, esto debe mudarse a Redis o a la
+// base de datos.
+const buckets = new Map(); // clave -> [marcas de tiempo]
 
-import authRoutes from './routes/auth.js';
-import teacherRoutes from './routes/teacher.js';
-import studentRoutes from './routes/student.js';
-import adminRoutes from './routes/admin.js';
-import superadminRoutes from './routes/superadmin.js';
-import matriculaRoutes from './routes/matricula.js';
-import projectorRoutes from './routes/projector.js';
-import chatRoutes from './routes/chat.js';
-import organizerRoutes from './routes/organizer.js';
-import uploadRoutes from './routes/upload.js';
-import aiRoutes from './routes/ai.js';
-import { UPLOAD_DIR } from './upload-dir.js';
+// Limpieza periódica para que el mapa no crezca sin control.
+const CLEANUP_MS = 10 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, arr] of buckets) {
+    const vivos = arr.filter((t) => now - t < CLEANUP_MS);
+    if (vivos.length) buckets.set(k, vivos); else buckets.delete(k);
+  }
+}, CLEANUP_MS).unref();
 
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+/**
+ * Registra un intento y dice si se pasó del límite.
+ * @returns {{limited: boolean, retryAfter: number}} segundos que faltan para poder reintentar
+ */
+export function hit(key, { max, windowMs }) {
+  const now = Date.now();
+  const arr = (buckets.get(key) || []).filter((t) => now - t < windowMs);
+  if (arr.length >= max) {
+    buckets.set(key, arr);
+    const retryAfter = Math.ceil((windowMs - (now - arr[0])) / 1000);
+    return { limited: true, retryAfter: Math.max(1, retryAfter) };
+  }
+  arr.push(now);
+  buckets.set(key, arr);
+  return { limited: false, retryAfter: 0 };
+}
 
-app.get('/api/health', (req, res) => res.json({ ok: true, service: 'proyecta-api', time: new Date().toISOString() }));
+// Borra el contador (p. ej. tras un login correcto).
+export function reset(key) {
+  buckets.delete(key);
+}
 
-app.use('/api/uploads', express.static(UPLOAD_DIR));
-app.use('/api/upload', uploadRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/teacher', teacherRoutes);
-app.use('/api/student', studentRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/superadmin', superadminRoutes);
-app.use('/api/matricula', matriculaRoutes);
-app.use('/api/projector', projectorRoutes);
-app.use('/api/chat', chatRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api', organizerRoutes);
+// IP real del cliente. Detrás de nginx llega en X-Forwarded-For.
+export function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd.length) return fwd.split(',')[0].trim();
+  return req.ip || req.socket?.remoteAddress || 'desconocida';
+}
 
-// 404 + manejador de errores
-app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Error interno del servidor' });
-});
-
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`🚀 Proyecta API escuchando en http://localhost:${PORT}`));
-
-export default app;
+/** Middleware listo para usar en una ruta. */
+export function limit({ max, windowMs, keyFn, message }) {
+  return (req, res, next) => {
+    const { limited, retryAfter } = hit(keyFn(req), { max, windowMs });
+    if (limited) {
+      res.set('Retry-After', String(retryAfter));
+      return res.status(429).json({ error: message || 'Demasiados intentos. Espera un momento e inténtalo de nuevo.' });
+    }
+    next();
+  };
+}

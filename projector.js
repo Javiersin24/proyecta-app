@@ -2,7 +2,21 @@
 import jwt from 'jsonwebtoken';
 import { prisma } from './db.js';
 
-const SECRET = process.env.JWT_SECRET || 'dev-proyecta-secret';
+// El secreto con el que se firman las sesiones. En producción NO puede tener
+// un valor por defecto: si el .env no lo define, cualquiera que lea este
+// repositorio podría fabricar tokens válidos para cualquier usuario, incluido
+// el súper-admin. Por eso el servidor se niega a arrancar en vez de usar uno
+// conocido. En desarrollo sí se permite, para no estorbar.
+const SECRET = process.env.JWT_SECRET || (() => {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('\n✖ FALTA JWT_SECRET en el archivo .env — el servidor no puede arrancar.\n' +
+      '  Genera uno seguro con:  node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'base64\'))"\n' +
+      '  y agrégalo al .env como:  JWT_SECRET="…"\n');
+    process.exit(1);
+  }
+  console.warn('⚠ JWT_SECRET no definido — usando el de desarrollo. NO uses esto en producción.');
+  return 'dev-proyecta-secret';
+})();
 const EXPIRES = '7d';
 
 export function signToken(user) {

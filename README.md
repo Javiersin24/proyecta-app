@@ -126,28 +126,38 @@ router.get('/calificaciones', async (req, res) => {
 // El estudiante NUNCA debe ver las notas de sus compañeros — todo se filtra
 // aquí mismo a su propia fila antes de responder.
 
-const GB_MAX = 5;
+// Lee las notas del estudiante respetando la configuración de SU clase:
+// la escala (0–5.0 ó 0–100) y el peso de cada categoría, si el profesor los
+// definió (ej. Parciales 40% / Talleres 30% / Tareas 30%).
 function readGradebookForStudent(gbRaw, studentName) {
   const gb = parseJSON(gbRaw, null);
   if (!gb) return null;
   const row = (gb.rows || []).find((r) => r.name === studentName);
   if (!row) return null;
+  const max = Number(gb.scale?.max) > 0 ? Number(gb.scale.max) : 5;
+  const pass = Number.isFinite(Number(gb.scale?.pass)) ? Number(gb.scale.pass) : max * 0.6;
   const num = (colId) => {
     const v = parseFloat(gb.grades?.[`${row.id}::${colId}`]);
-    return Number.isFinite(v) ? Math.min(GB_MAX, Math.max(0, v)) : null;
+    return Number.isFinite(v) ? Math.min(max, Math.max(0, v)) : null;
   };
   const catAvg = (cat) => {
     const xs = (cat.cols || []).map((k) => num(k.id)).filter((x) => x != null);
     return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
   };
   const cats = (gb.cats || []).map((cat) => ({
-    id: cat.id, name: cat.name,
+    id: cat.id, name: cat.name, peso: Number(cat.peso) || 0,
     cols: (cat.cols || []).map((k) => ({ id: k.id, label: k.label, val: num(k.id) })),
     avg: catAvg(cat),
   }));
-  const finals = cats.map((c) => c.avg).filter((x) => x != null);
-  const definitiva = finals.length ? finals.reduce((a, b) => a + b, 0) / finals.length : null;
-  return { cats, definitiva };
+  const conNota = cats.filter((c) => c.avg != null);
+  let definitiva = null;
+  if (conNota.length) {
+    const totalPeso = conNota.reduce((s, c) => s + c.peso, 0);
+    definitiva = totalPeso > 0
+      ? conNota.reduce((s, c) => s + c.avg * c.peso, 0) / totalPeso
+      : conNota.reduce((s, c) => s + c.avg, 0) / conNota.length;
+  }
+  return { cats, definitiva, scale: { max, pass } };
 }
 
 // GET /api/student/gradebook  → boletín: definitiva por cada clase inscrita
@@ -159,6 +169,7 @@ router.get('/gradebook', async (req, res) => {
     return {
       classId: c.id, name: c.name, section: c.section, paletteIdx: c.paletteIdx,
       teacherName: c.teacher?.name || null, definitiva: data?.definitiva ?? null,
+      scale: data?.scale || { max: 5, pass: 3 },
     };
   });
   res.json({ classes: rows });

@@ -8,14 +8,43 @@ import path from 'path';
 import { authRequired } from '../auth.js';
 import { UPLOAD_DIR } from '../upload-dir.js';
 
+// Lista blanca de extensiones. Es una lista blanca (no negra) a propósito:
+// cualquier tipo no contemplado se rechaza en vez de colarse.
+//
+// Se excluyen deliberadamente .html, .htm, .svg, .xml, .js y similares: esos
+// archivos se sirven desde el mismo origen que la API, así que un archivo con
+// JavaScript dentro podría ejecutarse en ese origen y robar la sesión de quien
+// lo abra (XSS almacenado).
+const EXT_PERMITIDAS = new Set([
+  'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'txt', 'rtf', 'odt', 'odp', 'ods',
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic',
+  'mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v',
+  'mp3', 'wav', 'm4a', 'ogg',
+  'zip',
+]);
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).slice(0, 12);
-    cb(null, `${crypto.randomBytes(12).toString('hex')}${ext}`);
+    // La extensión se normaliza y se toma de la lista blanca ya validada.
+    const ext = path.extname(file.originalname).slice(1, 6).toLowerCase().replace(/[^a-z0-9]/g, '');
+    cb(null, `${crypto.randomBytes(12).toString('hex')}${ext ? '.' + ext : ''}`);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } });
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).slice(1).toLowerCase();
+    if (!EXT_PERMITIDAS.has(ext)) {
+      const err = new Error('TIPO_NO_PERMITIDO');
+      err.code = 'TIPO_NO_PERMITIDO';
+      return cb(err);
+    }
+    cb(null, true);
+  },
+});
 
 const EXT_KIND = {
   pdf: 'pdf',
@@ -35,7 +64,11 @@ router.use(authRequired);
 // POST /api/upload  (multipart, campo "file") → { name, kind, url, sizeKB }
 router.post('/', (req, res) => {
   upload.single('file')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'El archivo supera el límite de 25 MB' : 'No se pudo subir el archivo' });
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'El archivo supera el límite de 25 MB' });
+      if (err.code === 'TIPO_NO_PERMITIDO') return res.status(400).json({ error: 'Ese tipo de archivo no está permitido. Puedes subir documentos (PDF, Word, PowerPoint, Excel), imágenes, audio o video.' });
+      return res.status(400).json({ error: 'No se pudo subir el archivo' });
+    }
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
     // Ruta relativa: el frontend le antepone el origen del backend (https).
     // Así evitamos devolver http:// detrás del proxy y romper la descarga.

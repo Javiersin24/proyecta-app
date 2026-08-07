@@ -40,8 +40,16 @@ export function serializeClass(c, { includeStudents = false } = {}) {
   const materials = {};
   for (const t of c.topics || []) materials[t.id] = (t.materials || []).map(serializeMaterial);
 
+  // Escala de notas de la clase (0–5.0 por defecto). Vive en el libro de notas
+  // porque cada clase la configura por su cuenta; se expone aquí para que las
+  // pantallas de tareas/calificación muestren la nota en la escala correcta.
+  const gbCfg = parseJSON(c.gradebook, null);
+  const gradeScale = gbCfg?.scale?.max > 0
+    ? { max: Number(gbCfg.scale.max), pass: Number(gbCfg.scale.pass ?? Number(gbCfg.scale.max) * 0.6) }
+    : { max: 5, pass: 3 };
+
   const out = {
-    id: c.id, name: c.name, section: c.section, code: c.code, paletteIdx: c.paletteIdx,
+    id: c.id, name: c.name, section: c.section, code: c.code, paletteIdx: c.paletteIdx, gradeScale,
     teacher: c.teacher ? { id: c.teacher.id, name: c.teacher.name, email: c.teacher.email } : null,
     studentCount: c._count?.members ?? (c.members ? c.members.length : undefined),
     // El "proyector de esta clase" es el salón actual del profesor (ver

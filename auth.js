@@ -1,11 +1,9 @@
-// Cliente Prisma único, compartido por toda la app.
-import { PrismaClient } from '@prisma/client';
+// Carpeta donde se guardan los archivos subidos (materiales, adjuntos,
+// entregas). Vive fuera de src/ para no mezclarse con el código y persiste
+// entre despliegues (no se toca con git pull).
+import { fileURLToPath } from 'url';
+import path from 'path';
+import fs from 'fs';
 
-export const prisma = new PrismaClient();
-
-// Helpers de (de)serialización para los campos JSON guardados como texto.
-export const parseJSON = (v, fallback = null) => {
-  if (v == null) return fallback;
-  try { return JSON.parse(v); } catch { return fallback; }
-};
-export const toJSON = (v) => (v == null ? null : JSON.stringify(v));
+export const UPLOAD_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'uploads');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });

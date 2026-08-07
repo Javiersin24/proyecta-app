@@ -4,8 +4,24 @@
 import { Router } from 'express';
 import { prisma } from '../db.js';
 import { authRequired } from '../auth.js';
+import { hit, clientIp } from '../ratelimit.js';
 
 const router = Router();
+
+// Los códigos de aula son cortos (4 caracteres) y estos endpoints no piden
+// sesión, porque los usa la pantalla del salón. Para que nadie los enumere,
+// se limitan SOLO LOS INTENTOS FALLIDOS por IP: un proyector con su código
+// válido nunca se ve afectado (aunque consulte cada pocos segundos), mientras
+// que probar códigos al azar se corta a los 20 fallos.
+const FALLOS = { max: 20, windowMs: 10 * 60 * 1000 };
+function codigoInvalido(req, res) {
+  const { limited, retryAfter } = hit(`proj:${clientIp(req)}`, FALLOS);
+  if (limited) {
+    res.set('Retry-After', String(retryAfter));
+    return res.status(429).json({ error: 'Demasiados intentos. Espera unos minutos.' });
+  }
+  return res.status(404).json({ error: 'Proyector no encontrado' });
+}
 
 // GET /api/projector/:code  → estado público del proyector (para la pantalla del proyector)
 // Este es el "primer inicio de sesión" del dispositivo del aula: en la
@@ -17,7 +33,7 @@ router.get('/:code', async (req, res) => {
     const room = await prisma.room.findFirst({ where: { code: req.params.code } });
     if (room) projector = await prisma.projector.findFirst({ where: { schoolId: room.schoolId, name: room.name } });
   }
-  if (!projector) return res.status(404).json({ error: 'Proyector no encontrado' });
+  if (!projector) return codigoInvalido(req, res);
   if (!projector.enabled) return res.status(403).json({ error: 'Este proyector está suspendido. Contacta al administrador del colegio.' });
   if (!projector.linked) {
     projector = await prisma.projector.update({ where: { id: projector.id }, data: { linked: true, status: 'online', activity: 'En línea · sin actividad' } });
@@ -32,7 +48,7 @@ router.get('/:code', async (req, res) => {
 // PROPIA sesión — no afecta a los demás salones.
 router.post('/:code/detener', async (req, res) => {
   const projector = await prisma.projector.findUnique({ where: { code: req.params.code } });
-  if (!projector) return res.status(404).json({ error: 'Proyector no encontrado' });
+  if (!projector) return codigoInvalido(req, res);
   await prisma.projectionSession.updateMany({ where: { projectorId: projector.id, endedAt: null }, data: { endedAt: new Date() } });
   await prisma.projector.update({ where: { id: projector.id }, data: { status: 'online', activity: 'En línea · sin actividad' } });
   res.json({ ok: true });

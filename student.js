@@ -5,7 +5,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../db.js';
 import { authRequired, requireRole } from '../auth.js';
-import { genPassword, uniqueUsername } from './admin.js';
+import { genPassword } from './admin.js';
 
 const router = Router();
 router.use(authRequired, requireRole('superadmin'));
@@ -99,23 +99,31 @@ router.get('/cuentas', async (req, res) => {
   res.json({ porColegio: Object.entries(grupos).map(([colegio, cuentas]) => ({ colegio, cuentas })) });
 });
 
-// POST /api/superadmin/cuentas  { schoolId, name, role }  → crea una cuenta en
-// cualquier colegio (admin/profesor/estudiante). Es la única forma de darle a
-// un colegio nuevo su primera cuenta de admin — de ahí en adelante ese admin
-// ya puede crear las demás cuentas desde su propio panel.
+// POST /api/superadmin/cuentas  { name, role, email?, schoolId? }  → crea una
+// cuenta (admin/profesor/estudiante). El colegio es OPCIONAL; el correo también
+// (si no se da, se genera uno único). Sirve para dar a un colegio nuevo su
+// primera cuenta de admin, o crear cuentas sueltas.
 router.post('/cuentas', async (req, res) => {
-  const { schoolId, name, role } = req.body || {};
-  if (!schoolId || !name || !['admin', 'teacher', 'student'].includes(role)) {
-    return res.status(400).json({ error: 'Colegio, nombre y tipo de cuenta (admin/profesor/estudiante) son obligatorios' });
+  const { schoolId, name, role, email } = req.body || {};
+  if (!name || !['admin', 'teacher', 'student'].includes(role)) {
+    return res.status(400).json({ error: 'Nombre y tipo de cuenta (admin/profesor/estudiante) son obligatorios' });
   }
-  const school = await prisma.school.findUnique({ where: { id: schoolId } });
-  if (!school) return res.status(404).json({ error: 'Colegio no encontrado' });
-  const usuario = await uniqueUsername(name, school.name);
+  if (!email || !email.trim()) return res.status(400).json({ error: 'El correo es obligatorio' });
+  let school = null;
+  if (schoolId) {
+    school = await prisma.school.findUnique({ where: { id: schoolId } });
+    if (!school) return res.status(404).json({ error: 'Colegio no encontrado' });
+  }
+
+  const usuario = email.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(usuario)) return res.status(400).json({ error: 'El correo no tiene un formato válido' });
+  if (await prisma.user.findUnique({ where: { email: usuario } })) return res.status(400).json({ error: 'Ya existe una cuenta con ese correo' });
+
   const pass = genPassword();
   const passwordHash = await bcrypt.hash(pass, 10);
-  const user = await prisma.user.create({ data: { schoolId, name, email: usuario, role, passwordHash } });
+  const user = await prisma.user.create({ data: { schoolId: schoolId || null, name, email: usuario, role, passwordHash } });
   res.status(201).json({
-    account: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, school: school.name },
+    account: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, school: school?.name || 'Sin colegio' },
     credentials: { usuario, pass },
   });
 });

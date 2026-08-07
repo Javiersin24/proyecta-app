@@ -1,8 +1,10 @@
 // Autenticación: login, registro público de matrícula, y sesión actual.
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { prisma, parseJSON } from '../db.js';
 import { signToken, authRequired } from '../auth.js';
+import { hit, reset, clientIp } from '../ratelimit.js';
 
 const router = Router();
 
@@ -16,15 +18,33 @@ export function publicUser(u) {
 }
 
 // POST /api/auth/login  { email, password }
+// Fuerza bruta: se limita tanto por IP (un atacante probando muchas cuentas)
+// como por cuenta (varios orígenes contra la misma). Un login correcto borra
+// los contadores para no castigar a quien simplemente se equivocó.
+const LOGIN_LIMITE = { max: 10, windowMs: 15 * 60 * 1000 };
+
 router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Correo y contraseña son obligatorios' });
-  const user = await prisma.user.findUnique({ where: { email: String(email).toLowerCase().trim() } });
+  const correo = String(email).toLowerCase().trim();
+  const claveIp = `login:ip:${clientIp(req)}`;
+  const claveCuenta = `login:cuenta:${correo}`;
+
+  for (const clave of [claveIp, claveCuenta]) {
+    const { limited, retryAfter } = hit(clave, LOGIN_LIMITE);
+    if (limited) {
+      res.set('Retry-After', String(retryAfter));
+      return res.status(429).json({ error: 'Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.' });
+    }
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: correo } });
   if (!user) return res.status(401).json({ error: 'Credenciales incorrectas' });
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Credenciales incorrectas' });
   if (user.status === 'Suspendida') return res.status(403).json({ error: 'Tu cuenta está suspendida. Contacta al administrador.' });
 
+  reset(claveIp); reset(claveCuenta);
   await prisma.user.update({ where: { id: user.id }, data: { online: true } });
   const token = signToken(user);
   res.json({ token, user: publicUser(user) });
@@ -120,7 +140,12 @@ router.post('/signup-matricula', async (req, res) => {
   const exists = await prisma.user.findUnique({ where: { email } });
   const finalEmail = exists ? `matricula.${Date.now()}@${slug(school.name)}.edu` : email;
 
-  const password = f.password || 'proyecta123';
+  // Si el formulario no trae contraseña, se genera una aleatoria y se devuelve
+  // al aspirante para que pueda volver a entrar. Antes quedaba fija en
+  // "proyecta123" — visible en el código, o sea que cualquiera podía entrar a
+  // la cuenta de cualquier matriculado.
+  const generada = !f.password;
+  const password = f.password || `Matricula${crypto.randomBytes(6).toString('base64url')}`;
   const passwordHash = await bcrypt.hash(password, 10);
   const account = await prisma.user.create({
     data: { name: f.name, email: finalEmail, passwordHash, role: 'enrollee', schoolId: school.id },
@@ -139,7 +164,12 @@ router.post('/signup-matricula', async (req, res) => {
   });
 
   const token = signToken(account);
-  res.status(201).json({ token, user: publicUser(account), enrollment, loginEmail: finalEmail });
+  res.status(201).json({
+    token, user: publicUser(account), enrollment, loginEmail: finalEmail,
+    // Solo cuando la generamos nosotros: el aspirante necesita conocerla para
+    // volver a entrar más adelante.
+    ...(generada ? { loginPassword: password } : {}),
+  });
 });
 
 const slug = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');

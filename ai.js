@@ -1,6 +1,7 @@
 // Módulo ADMIN DE COLEGIO (ERP): cuentas, matrícula + sorteo, aulas/grupos +
 // horarios, profesores, pagos, asistencia y calificaciones (solo lectura).
 import { Router } from 'express';
+import crypto from 'crypto';
 import { prisma, parseJSON, toJSON } from '../db.js';
 import { authRequired, requireRole } from '../auth.js';
 import { serializeGroup, GROUP_INCLUDE } from '../serializers.js';
@@ -347,11 +348,19 @@ router.patch('/pagos/:id', async (req, res) => {
 
 export const slugName = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '.');
 
-// Genera una contraseña temporal legible (para entregar al crear/restablecer una cuenta).
+// Genera una contraseña temporal legible pero NO adivinable.
+//
+// La versión anterior ("Sol4821") solo tenía 8 × 9.000 = 72.000 combinaciones:
+// con los correos institucionales siendo predecibles, era viable probarlas
+// todas contra el login. Ahora se usa aleatoriedad criptográfica y un espacio
+// de ~10^14 combinaciones, manteniéndola fácil de dictar por teléfono.
 export function genPassword() {
-  const adj = ['Aula', 'Faro', 'Luz', 'Nube', 'Rio', 'Sol', 'Mar', 'Eco'];
-  const n = Math.floor(1000 + Math.random() * 9000);
-  return adj[Math.floor(Math.random() * adj.length)] + n;
+  const adj = ['Aula', 'Faro', 'Luz', 'Nube', 'Rio', 'Sol', 'Mar', 'Eco', 'Cielo', 'Valle', 'Norte', 'Puerto'];
+  const sus = ['Verde', 'Azul', 'Claro', 'Vivo', 'Alto', 'Nuevo', 'Sereno', 'Fuerte'];
+  const bytes = crypto.randomBytes(8);
+  const pick = (arr, i) => arr[bytes[i] % arr.length];
+  const num = (bytes.readUInt32BE(4) % 900000) + 100000; // 6 dígitos
+  return `${pick(adj, 0)}${pick(sus, 1)}${num}`;         // ej. "PuertoSereno482913"
 }
 
 // Genera un usuario único (nombre.apellido@colegio) evitando colisiones.

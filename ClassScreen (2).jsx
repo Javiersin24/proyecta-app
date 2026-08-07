@@ -110,7 +110,7 @@ function buildDeepenSystem(insight, teacherName) {
     `Patrones: ${insight.patrones.join(' | ')}`,
     `Evidencia: ${insight.evidencia.map((e) => e.texto).join(' | ')}`,
     `Nivel de confianza calculado: ${insight.confianza.pct}% (${insight.confianza.label}).`,
-    `Tu tarea: en máximo 90 palabras, profundiza en la hipótesis y da un siguiente paso concreto y accionable para el profesor. Puedes usar **negrita** para resaltar lo clave y listas ("-" o "1.") si ayudan a organizar pasos. Sin encabezados ni tablas. Preséntalo como una hipótesis ("esto sugiere…", "podría deberse a…"), nunca como un hecho absoluto. No inventes porcentajes nuevos.`,
+    `Tu tarea: en máximo 90 palabras, profundiza en la hipótesis y da un siguiente paso concreto y accionable para el profesor. Evita lo obvio: aporta un ángulo, causa alternativa o técnica pedagógica específica que el profesor probablemente no había considerado, no una repetición genérica de la recomendación. Puedes usar **negrita** para resaltar lo clave y listas ("-" o "1.") si ayudan a organizar pasos. Sin encabezados ni tablas. Preséntalo como una hipótesis ("esto sugiere…", "podría deberse a…"), nunca como un hecho absoluto. No inventes porcentajes nuevos.`,
   ].join('\n');
 }
 

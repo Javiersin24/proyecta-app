@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { get } from '../../lib/api.js';
 import { TopBar, SectionHeader, Chip, Avatar, MaterialRow } from '../../ui/kit.jsx';
+import { gbFmtIn } from '../../lib/gradebook.js';
 import { useQuickProject } from '../shared/ProjectAction.jsx';
 import Icon from '../../ui/Icon.jsx';
 
@@ -15,6 +16,7 @@ export default function TeacherTaskScreen() {
   if (!cls) return null;
   const task = cls.tasks.find((t) => t.id === taskId);
   if (!task) return null;
+  const scale = cls.gradeScale || { max: 5, pass: 3 };
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -56,7 +58,7 @@ export default function TeacherTaskScreen() {
                   <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{s.status === 'done' ? (s.file?.meta || 'Entregada') : s.status === 'late' ? 'Atrasada' : 'Pendiente'}</div>
                 </div>
                 {s.grade != null ? (
-                  <div style={{ padding: '5px 10px', borderRadius: 999, background: 'var(--success-100)', color: '#1a6b47', fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>{s.grade}/100</div>
+                  <div style={{ padding: '5px 10px', borderRadius: 999, background: 'var(--success-100)', color: '#1a6b47', fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>{gbFmtIn(s.grade, scale)}/{scale.max}</div>
                 ) : s.status === 'done' || s.status === 'late' ? (
                   <Chip variant="info">Calificar</Chip>
                 ) : (

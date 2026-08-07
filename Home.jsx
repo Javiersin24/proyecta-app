@@ -16,22 +16,22 @@ export default function ClassAnalysisTab({ classId }) {
   const isPremium = !!user?.premium;
   const [cls, setCls] = useState(null);
   const [error, setError] = useState(null);
+  const [notPremium, setNotPremium] = useState(!isPremium);
   const [fichaName, setFichaName] = useState(null);
   const [reporte, setReporte] = useState(null);
 
   useEffect(() => {
-    if (!isPremium) return;
     let alive = true;
     get('/teacher/intelligence')
-      .then((d) => { if (alive) setCls((d.classes || []).find((c) => String(c.id) === String(classId)) || null); })
-      .catch((e) => { if (alive) setError(e.message || 'No se pudo cargar el análisis.'); });
+      .then((d) => { if (!alive) return; setCls((d.classes || []).find((c) => String(c.id) === String(classId)) || null); setNotPremium(false); setError(null); })
+      .catch((e) => { if (!alive) return; if (e.status === 403) setNotPremium(true); else setError(e.message || 'No se pudo cargar el análisis.'); });
     return () => { alive = false; };
-  }, [isPremium, classId]);
+  }, [classId]);
 
   const a = useMemo(() => (cls ? analyzeClass(cls) : null), [cls]);
   const trend = useMemo(() => (cls ? riCategoryTrend(cls) : null), [cls]);
 
-  if (!isPremium) {
+  if (notPremium) {
     return (
       <div style={{ padding: '4px 2px' }}>
         <div style={{ background: 'linear-gradient(135deg, var(--indigo-500) 0%, #7C5CFA 100%)', borderRadius: 18, padding: '22px 20px', color: '#fff', textAlign: 'center' }}>
